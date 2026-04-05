@@ -1,0 +1,31 @@
+# CFAR Detector Configurations
+# Reference window and guard cell parameters for 2D sliding window CFAR
+
+ca_cfar:
+  name: "CA-CFAR"
+  guard_cells: [3, 3]       # guard band half-size [range, azimuth]
+  reference_cells: [10, 10] # reference window half-size
+  pfa: 1.0e-4               # probability of false alarm
+  min_area: 20              # minimum connected component area (pixels)
+
+go_cfar:
+  name: "GO-CFAR"
+  guard_cells: [3, 3]
+  reference_cells: [10, 10]
+  pfa: 1.0e-4
+  min_area: 20
+
+so_cfar:
+  name: "SO-CFAR"
+  guard_cells: [3, 3]
+  reference_cells: [10, 10]
+  pfa: 1.0e-4
+  min_area: 20
+
+os_cfar:
+  name: "OS-CFAR"
+  guard_cells: [3, 3]
+  reference_cells: [10, 10]
+  pfa: 1.0e-4
+  k: 0.75                   # order statistic rank fraction
+  min_area: 20

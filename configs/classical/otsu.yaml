@@ -1,0 +1,15 @@
+# Otsu + SSOTSU Configuration
+# Speed-up seed point Otsu method for small target detection
+
+otsu:
+  name: "Otsu"
+  min_area: 10
+  max_area: 50000
+
+ssotsu:
+  name: "SSOTSU"
+  block_size: 64              # local block size for seed point detection
+  seed_threshold_factor: 1.5  # factor above local Otsu threshold for seed points
+  region_grow_threshold: 0.8  # relative intensity threshold for region growing
+  min_area: 5                 # smaller minimum for small-target detection
+  max_area: 50000
