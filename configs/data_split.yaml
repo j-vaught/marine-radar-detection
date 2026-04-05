@@ -1,0 +1,52 @@
+# Data splitting configuration
+# Temporal splitting by recording session prevents data leakage
+
+# Strategy: split by sub-dataset (each is a separate recording session)
+strategy: "by_dataset"
+
+splits:
+  train:
+    - "MANV"       # 976 frames (largest sub-dataset)
+  val:
+    - "DARC"       # 527 frames
+  test:
+    - "DAAN"       # 760 frames (primary evaluation set from the paper)
+
+# HAXR stations can be split across train/val/test
+haxr_splits:
+  train:
+    - "altona"
+    - "amerikahoeft"
+    - "ellerholzhoeft"
+    - "kattwyk"
+    - "krusenbusch"
+    - "koehlbrandhoeft"
+    - "landungsbruecken"
+    - "hohe_schaar"
+    - "nesssand"
+  val:
+    - "parkhafen"
+    - "seemannshoeft"
+  test:
+    - "reiherstieg"
+    - "sandauhafen"
+
+# HAXR rendering parameters
+haxr:
+  sample_rate: 10          # render every Nth cycle
+  img_size: 1024           # output PPI image size
+  box_size: 20             # AIS ground truth bbox size (pixels)
+  time_window: 1.0         # AIS matching window (seconds)
+
+# DLR annotation parameters
+dlr:
+  max_range: 6000          # meters
+  dbscan_eps: 200          # DBSCAN epsilon for clustering
+  dbscan_min_samples: 5    # DBSCAN minimum cluster size
+  bbox_padding: 12         # bounding box padding (pixels)
+
+# Tiling parameters
+tiling:
+  tile_size: 640
+  overlap: 0.2
+  min_visibility: 0.3     # minimum fraction of box visible in tile

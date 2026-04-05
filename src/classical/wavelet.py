@@ -3,7 +3,7 @@
 import numpy as np
 import pywt
 
-from .utils import binary_mask_to_bboxes
+from .utils import binary_mask_to_bboxes, binary_mask_to_bboxes_with_scores
 
 
 def detect_wavelet(
@@ -14,7 +14,7 @@ def detect_wavelet(
     subbands: list[str] | None = None,
     combine_mode: str = "max",
     min_area: int = 15,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Detect targets using 2D stationary wavelet transform.
 
     Target energy concentrates in high-frequency subbands while sea clutter
@@ -30,7 +30,8 @@ def detect_wavelet(
         min_area: Minimum connected component area.
 
     Returns:
-        Tuple of (bboxes, binary_mask).
+        Tuple of (bboxes, binary_mask, scores) where scores are normalised
+        peak wavelet-coefficient magnitudes per component in [0, 1].
     """
     if subbands is None:
         subbands = ["LH", "HL", "HH"]
@@ -48,9 +49,10 @@ def detect_wavelet(
     # 2D Stationary Wavelet Transform
     coeffs = pywt.swt2(padded, wavelet, level=level, trim_approx=True)
 
-    # Combine high-frequency subbands
+    # Combine high-frequency subbands and accumulate peak coefficient magnitude
     subband_map = {"LH": 0, "HL": 1, "HH": 2}
     detection_map = np.zeros((new_h, new_w), dtype=np.float32)
+    coeff_magnitude = np.zeros((new_h, new_w), dtype=np.float32)
 
     for lvl_coeffs in coeffs[1:]:  # skip approximation
         for sb_name in subbands:
@@ -63,6 +65,9 @@ def detect_wavelet(
             thresh = mu + threshold_sigma * sigma
             binary = (detail > thresh).astype(np.float32)
 
+            # Track maximum coefficient magnitude across subbands/levels
+            coeff_magnitude = np.maximum(coeff_magnitude, detail)
+
             if combine_mode == "max":
                 detection_map = np.maximum(detection_map, binary)
             elif combine_mode == "sum":
@@ -72,11 +77,24 @@ def detect_wavelet(
 
     # Crop back to original size
     detection_map = detection_map[:h, :w]
+    coeff_magnitude = coeff_magnitude[:h, :w]
 
     if combine_mode == "sum":
         detection_map = (detection_map > 0).astype(np.uint8)
     else:
         detection_map = detection_map.astype(np.uint8)
 
+    # Scores are derived from peak wavelet coefficient magnitude per component.
+    # Normalise coeff_magnitude to [0, 1] so binary_mask_to_bboxes_with_scores
+    # uses the mean-intensity path (no threshold_map) with a [0,1] scaled image.
+    mag_max = coeff_magnitude.max()
+    if mag_max > 0:
+        coeff_norm = coeff_magnitude / mag_max
+    else:
+        coeff_norm = coeff_magnitude
+
+    _, scores = binary_mask_to_bboxes_with_scores(
+        detection_map, coeff_norm, threshold_map=None, min_area=min_area
+    )
     bboxes = binary_mask_to_bboxes(detection_map, min_area=min_area)
-    return bboxes, detection_map
+    return bboxes, detection_map, scores

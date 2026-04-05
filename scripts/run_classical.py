@@ -37,26 +37,38 @@ def parse_args():
 
 
 def run_method(method_name, image, configs):
-    """Dispatch to the appropriate detection method."""
+    """Dispatch to the appropriate detection method.
+
+    Returns:
+        Tuple of (bboxes, scores) where scores are in [0, 1].
+    """
     if method_name == "ca_cfar":
         cfg = configs["cfar"]["ca_cfar"]
-        bboxes, _ = detect_cfar(image, tuple(cfg["guard_cells"]), tuple(cfg["reference_cells"]),
-                                cfg["pfa"], mode="CA", min_area=cfg["min_area"])
+        bboxes, _, scores = detect_cfar(
+            image, tuple(cfg["guard_cells"]), tuple(cfg["reference_cells"]),
+            cfg["pfa"], mode="CA", min_area=cfg["min_area"],
+        )
     elif method_name == "go_cfar":
         cfg = configs["cfar"]["go_cfar"]
-        bboxes, _ = detect_cfar(image, tuple(cfg["guard_cells"]), tuple(cfg["reference_cells"]),
-                                cfg["pfa"], mode="GO", min_area=cfg["min_area"])
+        bboxes, _, scores = detect_cfar(
+            image, tuple(cfg["guard_cells"]), tuple(cfg["reference_cells"]),
+            cfg["pfa"], mode="GO", min_area=cfg["min_area"],
+        )
     elif method_name == "so_cfar":
         cfg = configs["cfar"]["so_cfar"]
-        bboxes, _ = detect_cfar(image, tuple(cfg["guard_cells"]), tuple(cfg["reference_cells"]),
-                                cfg["pfa"], mode="SO", min_area=cfg["min_area"])
+        bboxes, _, scores = detect_cfar(
+            image, tuple(cfg["guard_cells"]), tuple(cfg["reference_cells"]),
+            cfg["pfa"], mode="SO", min_area=cfg["min_area"],
+        )
     elif method_name == "os_cfar":
         cfg = configs["cfar"]["os_cfar"]
-        bboxes, _ = detect_cfar(image, tuple(cfg["guard_cells"]), tuple(cfg["reference_cells"]),
-                                cfg["pfa"], mode="OS", k_os=cfg["k"], min_area=cfg["min_area"])
+        bboxes, _, scores = detect_cfar(
+            image, tuple(cfg["guard_cells"]), tuple(cfg["reference_cells"]),
+            cfg["pfa"], mode="OS", k_os=cfg["k"], min_area=cfg["min_area"],
+        )
     elif method_name == "morphological":
         cfg = configs["morphological"]["morphological"]
-        bboxes, _, _ = detect_morphological(
+        bboxes, _, _, scores = detect_morphological(
             image,
             opening_kernel_size=cfg["opening_kernel_size"],
             opening_iterations=cfg["opening_iterations"],
@@ -67,7 +79,7 @@ def run_method(method_name, image, configs):
         )
     elif method_name == "wavelet":
         cfg = configs["wavelet"]["wavelet"]
-        bboxes, _ = detect_wavelet(
+        bboxes, _, scores = detect_wavelet(
             image,
             wavelet=cfg["wavelet"],
             level=cfg["level"],
@@ -78,10 +90,10 @@ def run_method(method_name, image, configs):
         )
     elif method_name == "otsu":
         cfg = configs["otsu"]["otsu"]
-        bboxes, _ = detect_otsu(image, min_area=cfg["min_area"], max_area=cfg["max_area"])
+        bboxes, _, scores = detect_otsu(image, min_area=cfg["min_area"], max_area=cfg["max_area"])
     elif method_name == "ssotsu":
         cfg = configs["otsu"]["ssotsu"]
-        bboxes, _ = detect_ssotsu(
+        bboxes, _, scores = detect_ssotsu(
             image,
             block_size=cfg["block_size"],
             seed_threshold_factor=cfg["seed_threshold_factor"],
@@ -92,7 +104,7 @@ def run_method(method_name, image, configs):
     else:
         raise ValueError(f"Unknown method: {method_name}")
 
-    return bboxes
+    return bboxes, scores
 
 
 def main():
@@ -127,10 +139,8 @@ def main():
                 continue
 
             image_float = image.astype(np.float32) / 255.0
-            bboxes = run_method(method_name, image_float, configs)
+            bboxes, scores = run_method(method_name, image_float, configs)
 
-            # Classical methods have no confidence score, use 1.0
-            scores = np.ones(len(bboxes), dtype=np.float32)
             preds = format_predictions_coco(img_info["id"], bboxes, scores)
             all_predictions.extend(preds)
 

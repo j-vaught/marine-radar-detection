@@ -6,7 +6,7 @@ Implements CA-CFAR, GO-CFAR, SO-CFAR, and OS-CFAR with 2D sliding reference wind
 import numpy as np
 from scipy.ndimage import uniform_filter
 
-from .utils import binary_mask_to_bboxes
+from .utils import binary_mask_to_bboxes, binary_mask_to_bboxes_with_scores
 
 
 def _cfar_threshold_map(
@@ -116,7 +116,7 @@ def detect_cfar(
     mode: str = "CA",
     k_os: float = 0.75,
     min_area: int = 20,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Run CFAR detection.
 
     Args:
@@ -129,9 +129,12 @@ def detect_cfar(
         min_area: Minimum connected component area.
 
     Returns:
-        Tuple of (bboxes, binary_mask).
+        Tuple of (bboxes, binary_mask, scores) where scores are normalised
+        peak-to-threshold ratios in [0, 1] for each detection.
     """
     threshold = _cfar_threshold_map(image, guard, ref, pfa, mode, k_os)
     mask = (image > threshold).astype(np.uint8)
-    bboxes = binary_mask_to_bboxes(mask, min_area=min_area)
-    return bboxes, mask
+    bboxes, scores = binary_mask_to_bboxes_with_scores(
+        mask, image, threshold_map=threshold, min_area=min_area
+    )
+    return bboxes, mask, scores

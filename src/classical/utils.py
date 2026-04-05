@@ -69,6 +69,78 @@ def binary_mask_to_bboxes_with_props(
     return np.array(bboxes, dtype=np.float32).reshape(-1, 4), props
 
 
+def binary_mask_to_bboxes_with_scores(
+    mask: np.ndarray,
+    intensity_image: np.ndarray,
+    threshold_map: np.ndarray | None = None,
+    min_area: int = 10,
+    max_area: int = 50000,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Convert a binary mask to bounding boxes with per-detection confidence scores.
+
+    For each connected component the score is derived from how strongly the
+    detected pixels exceed the background level:
+
+    - With threshold_map: score = peak_intensity / threshold_at_centroid,
+      clamped to [0, 1] after global normalisation across all detections.
+    - Without threshold_map: score = mean_intensity_in_component / 255.0
+      (or / 1.0 for float images), normalised to the per-image maximum so
+      scores span [0, 1].
+
+    Args:
+        mask: Binary mask (0/1 or bool).
+        intensity_image: Original intensity image aligned with mask.
+        threshold_map: Optional per-pixel CFAR / Otsu threshold map.
+        min_area: Minimum component area to keep.
+        max_area: Maximum component area to keep.
+
+    Returns:
+        Tuple of ((N, 4) bboxes in [x1, y1, x2, y2], (N,) scores in [0, 1]).
+    """
+    labels = measure.label(mask.astype(np.uint8), connectivity=2)
+    regions = measure.regionprops(labels, intensity_image=intensity_image.astype(np.float32))
+
+    bboxes = []
+    raw_scores = []
+
+    for region in regions:
+        if region.area < min_area or region.area > max_area:
+            continue
+
+        y1, x1, y2, x2 = region.bbox
+        bboxes.append([x1, y1, x2, y2])
+
+        if threshold_map is not None:
+            # Peak intensity of the component
+            peak = float(region.intensity_image.max())
+            # Threshold at the centroid pixel
+            cy, cx = int(round(region.centroid[0])), int(round(region.centroid[1]))
+            cy = np.clip(cy, 0, threshold_map.shape[0] - 1)
+            cx = np.clip(cx, 0, threshold_map.shape[1] - 1)
+            local_thresh = float(threshold_map[cy, cx])
+            score = peak / (local_thresh + 1e-9)
+        else:
+            # Normalise mean intensity to image scale
+            scale = 255.0 if intensity_image.max() > 1.0 else 1.0
+            score = float(region.mean_intensity) / scale
+
+        raw_scores.append(score)
+
+    if not bboxes:
+        return np.zeros((0, 4), dtype=np.float32), np.zeros(0, dtype=np.float32)
+
+    bboxes_arr = np.array(bboxes, dtype=np.float32)
+    scores_arr = np.array(raw_scores, dtype=np.float32)
+
+    # Normalise to [0, 1] across detections in this image
+    s_max = scores_arr.max()
+    if s_max > 0:
+        scores_arr = scores_arr / s_max
+    scores_arr = np.clip(scores_arr, 0.0, 1.0)
+
+    return bboxes_arr, scores_arr
+
+
 def compute_local_stats(
     image: np.ndarray,
     center: tuple[int, int],

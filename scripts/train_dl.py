@@ -1,6 +1,7 @@
 """Train all deep learning models with multi-seed runs."""
 
 import argparse
+import json
 from pathlib import Path
 
 import yaml
@@ -17,7 +18,8 @@ def parse_args():
     parser.add_argument("--config", type=str, required=True,
                         help="Path to model config YAML")
     parser.add_argument("--data", type=str, required=True,
-                        help="Path to data config (YOLO yaml or annotation dir)")
+                        help="Path to data (YOLO data.yaml for yolov11/rt_detr, "
+                             "processed dir for faster_rcnn/unet)")
     parser.add_argument("--output-dir", type=str, default="results/deep_learning",
                         help="Output directory")
     parser.add_argument("--seeds", nargs="+", type=int, default=None,
@@ -27,37 +29,42 @@ def parse_args():
     return parser.parse_args()
 
 
-def train_yolov11(config_path, data_path, output_dir, seeds):
+def train_yolov11(config_path, data_path, output_dir, seeds, device):
     from src.deep_learning.yolov11_obb import train_yolov11 as _train
-    for seed in seeds:
-        print(f"\n--- YOLOv11-OBB seed={seed} ---")
-        _train(data_path, config_path, output_dir, seed=seed)
-
-
-def train_faster_rcnn(config_path, data_path, output_dir, seeds):
-    import torch
-    from torch.utils.data import DataLoader
-    from src.deep_learning.faster_rcnn import build_model, train_faster_rcnn as _train
-    from src.data.dataset import RadarDetectionDataset
-    import json
 
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
+    if device is not None:
+        cfg["training"]["device"] = device
+
+    # data_path should be the YOLO data.yaml
+    for seed in seeds:
+        print(f"\n--- YOLOv11-OBB seed={seed} device={cfg['training']['device']} ---")
+        _train(data_path, config_path, output_dir, seed=seed)
+
+
+def train_faster_rcnn(config_path, data_path, output_dir, seeds, device):
+    from torch.utils.data import DataLoader
+    from src.deep_learning.faster_rcnn import build_model, train_faster_rcnn as _train
+    from src.data.dataset import RadarDetectionDataset
+
+    with open(config_path) as f:
+        cfg = yaml.safe_load(f)
+    if device is not None:
+        cfg["training"]["device"] = device
 
     data_dir = Path(data_path)
 
-    # Load annotations
-    with open(data_dir / "annotations" / "DAAN_train.json") as f:
+    # Load tiled annotations (unified naming)
+    with open(data_dir / "annotations" / "train_tiled.json") as f:
         train_ann = json.load(f)
-    with open(data_dir / "annotations" / "DAAN_val.json") as f:
+    with open(data_dir / "annotations" / "val_tiled.json") as f:
         val_ann = json.load(f)
 
-    # Build annotation lists for dataset
     def ann_to_list(ann_dict):
         img_id_to_anns = {}
         for a in ann_dict["annotations"]:
             img_id_to_anns.setdefault(a["image_id"], []).append(a)
-
         items = []
         for img in ann_dict["images"]:
             anns = img_id_to_anns.get(img["id"], [])
@@ -81,11 +88,11 @@ def train_faster_rcnn(config_path, data_path, output_dir, seeds):
         return tuple(zip(*batch))
 
     for seed in seeds:
-        print(f"\n--- Faster R-CNN seed={seed} ---")
+        print(f"\n--- Faster R-CNN seed={seed} device={cfg['training']['device']} ---")
         model = build_model(cfg)
 
-        train_ds = RadarDetectionDataset(data_dir / "tiles", train_items)
-        val_ds = RadarDetectionDataset(data_dir / "tiles", val_items)
+        train_ds = RadarDetectionDataset(data_dir / "tiles" / "train", train_items)
+        val_ds = RadarDetectionDataset(data_dir / "tiles" / "val", val_items)
 
         train_loader = DataLoader(
             train_ds, batch_size=cfg["training"]["batch_size"],
@@ -101,19 +108,20 @@ def train_faster_rcnn(config_path, data_path, output_dir, seeds):
         _train(model, train_loader, val_loader, cfg, output_dir, seed=seed)
 
 
-def train_unet(config_path, data_path, output_dir, seeds):
-    import torch
+def train_unet(config_path, data_path, output_dir, seeds, device):
     from torch.utils.data import DataLoader
     from src.deep_learning.unet import UNet, train_unet as _train
     from src.data.dataset import RadarSegmentationDataset
 
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
+    if device is not None:
+        cfg["training"]["device"] = device
 
     data_dir = Path(data_path)
 
     for seed in seeds:
-        print(f"\n--- U-Net seed={seed} ---")
+        print(f"\n--- U-Net seed={seed} device={cfg['training']['device']} ---")
         model = UNet(
             in_channels=cfg["model"]["in_channels"],
             num_classes=cfg["model"]["num_classes"],
@@ -140,10 +148,16 @@ def train_unet(config_path, data_path, output_dir, seeds):
         _train(model, train_loader, val_loader, cfg, output_dir, seed=seed)
 
 
-def train_rtdetr(config_path, data_path, output_dir, seeds):
+def train_rtdetr(config_path, data_path, output_dir, seeds, device):
     from src.deep_learning.rt_detr import train_rt_detr as _train
+
+    with open(config_path) as f:
+        cfg = yaml.safe_load(f)
+    if device is not None:
+        cfg["training"]["device"] = device
+
     for seed in seeds:
-        print(f"\n--- RT-DETR seed={seed} ---")
+        print(f"\n--- RT-DETR seed={seed} device={cfg['training']['device']} ---")
         _train(data_path, config_path, output_dir, seed=seed)
 
 
@@ -154,8 +168,6 @@ def main():
         cfg = yaml.safe_load(f)
 
     seeds = args.seeds or cfg["training"]["seeds"]
-    if args.device:
-        cfg["training"]["device"] = args.device
 
     output_dir = Path(args.output_dir) / args.model
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -167,7 +179,7 @@ def main():
         "rt_detr": train_rtdetr,
     }
 
-    dispatch[args.model](args.config, args.data, output_dir, seeds)
+    dispatch[args.model](args.config, args.data, output_dir, seeds, args.device)
 
 
 if __name__ == "__main__":

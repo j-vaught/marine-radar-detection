@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from skimage.filters import threshold_otsu
 
-from .utils import binary_mask_to_bboxes_with_props
+from .utils import binary_mask_to_bboxes_with_props, binary_mask_to_bboxes_with_scores
 
 
 def detect_morphological(
@@ -17,7 +17,7 @@ def detect_morphological(
     max_area: int = 50000,
     min_eccentricity: float = 0.0,
     max_eccentricity: float = 0.99,
-) -> tuple[np.ndarray, np.ndarray, list[dict]]:
+) -> tuple[np.ndarray, np.ndarray, list[dict], np.ndarray]:
     """Morphological detection pipeline.
 
     Pipeline: Otsu threshold -> opening (erosion+dilation) -> closing -> connected components
@@ -27,7 +27,8 @@ def detect_morphological(
         image: Grayscale input image (uint8 or float [0,1]).
 
     Returns:
-        Tuple of (bboxes, binary_mask, region_properties).
+        Tuple of (bboxes, binary_mask, region_properties, scores) where scores
+        are normalised mean-intensity-to-Otsu-threshold ratios in [0, 1].
     """
     # Ensure uint8
     if image.dtype in (np.float32, np.float64):
@@ -60,4 +61,16 @@ def detect_morphological(
         max_eccentricity=max_eccentricity,
     )
 
-    return bboxes, closed, props
+    # Scores: mean intensity of each component relative to the Otsu threshold.
+    # Use a constant threshold_map equal to the global Otsu value so that
+    # binary_mask_to_bboxes_with_scores computes peak / thresh per component.
+    threshold_map = np.full(closed.shape, float(thresh), dtype=np.float32)
+    _, scores = binary_mask_to_bboxes_with_scores(
+        closed,
+        img_u8.astype(np.float32),
+        threshold_map=threshold_map,
+        min_area=min_area,
+        max_area=max_area,
+    )
+
+    return bboxes, closed, props, scores
