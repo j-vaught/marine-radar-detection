@@ -44,3 +44,6 @@ weights/
 *.log
 wandb/
 runs/
+
+# Apple double files
+._*
