@@ -6,39 +6,46 @@ from skimage.filters import threshold_otsu
 
 from .utils import binary_mask_to_bboxes, binary_mask_to_bboxes_with_scores
 
+# Default dilation and padding to match GT box scale (~33x33 from 12px padding)
+DEFAULT_DILATION = 5
+DEFAULT_BOX_PADDING = 12
+
 
 def detect_otsu(
     image: np.ndarray,
     min_area: int = 10,
     max_area: int = 50000,
+    dilation: int = DEFAULT_DILATION,
+    box_padding: int = DEFAULT_BOX_PADDING,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Basic Otsu thresholding + connected component detection.
 
-    Args:
-        image: Grayscale input image.
-        min_area: Minimum connected component area.
-        max_area: Maximum connected component area.
-
-    Returns:
-        Tuple of (bboxes, binary_mask, scores) where scores are normalised
-        peak-intensity-to-Otsu-threshold ratios in [0, 1].
+    Computes Otsu threshold on non-zero pixels only (handles masked images).
     """
     if image.dtype in (np.float32, np.float64):
         img_u8 = (image * 255).astype(np.uint8)
     else:
         img_u8 = image.copy()
 
-    thresh = threshold_otsu(img_u8)
-    binary = (img_u8 > thresh).astype(np.uint8)
-    bboxes = binary_mask_to_bboxes(binary, min_area=min_area, max_area=max_area)
+    # Compute threshold on non-zero pixels only
+    nonzero = img_u8[img_u8 > 0]
+    if len(nonzero) < 100:
+        empty = np.zeros((0, 4), dtype=np.float32)
+        return empty, np.zeros_like(img_u8), np.zeros(0, dtype=np.float32)
+
+    thresh = threshold_otsu(nonzero)
+    binary = ((img_u8 > thresh) & (img_u8 > 0)).astype(np.uint8)
+
+    bboxes = binary_mask_to_bboxes(
+        binary, min_area=min_area, max_area=max_area,
+        dilation=dilation, box_padding=box_padding,
+    )
 
     threshold_map = np.full(binary.shape, float(thresh), dtype=np.float32)
     _, scores = binary_mask_to_bboxes_with_scores(
-        binary,
-        img_u8.astype(np.float32),
-        threshold_map=threshold_map,
-        min_area=min_area,
-        max_area=max_area,
+        binary, img_u8.astype(np.float32), threshold_map=threshold_map,
+        min_area=min_area, max_area=max_area,
+        dilation=dilation, box_padding=box_padding,
     )
     return bboxes, binary, scores
 
@@ -50,23 +57,12 @@ def detect_ssotsu(
     region_grow_threshold: float = 0.8,
     min_area: int = 5,
     max_area: int = 50000,
+    dilation: int = DEFAULT_DILATION,
+    box_padding: int = DEFAULT_BOX_PADDING,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """SSOTSU: Speed-up Seed Point Otsu method for small target detection.
 
-    Divides image into blocks, applies local Otsu to find seed points,
-    then grows regions from seeds using intensity similarity.
-
-    Args:
-        image: Grayscale input image.
-        block_size: Local block size for seed detection.
-        seed_threshold_factor: Factor above local Otsu for seed qualification.
-        region_grow_threshold: Relative intensity threshold for region growing.
-        min_area: Minimum component area.
-        max_area: Maximum component area.
-
-    Returns:
-        Tuple of (bboxes, binary_mask, scores) where scores are normalised
-        peak-intensity-to-seed-threshold ratios in [0, 1].
+    Computes local Otsu on non-zero pixels only per block.
     """
     if image.dtype in (np.float32, np.float64):
         img_u8 = (image * 255).astype(np.uint8)
@@ -76,24 +72,23 @@ def detect_ssotsu(
     h, w = img_u8.shape
     seed_mask = np.zeros((h, w), dtype=np.uint8)
 
-    # Phase 1: Find seed points via local Otsu
     for y in range(0, h, block_size):
         for x in range(0, w, block_size):
             block = img_u8[y: min(y + block_size, h), x: min(x + block_size, w)]
-            if block.std() < 1:
+            nonzero_block = block[block > 0]
+            if len(nonzero_block) < 10 or nonzero_block.std() < 1:
                 continue
             try:
-                local_thresh = threshold_otsu(block)
+                local_thresh = threshold_otsu(nonzero_block)
             except ValueError:
                 continue
             seed_thresh = local_thresh * seed_threshold_factor
-            local_seeds = block > seed_thresh
+            local_seeds = (block > seed_thresh) & (block > 0)
             seed_mask[y: y + block.shape[0], x: x + block.shape[1]] = local_seeds.astype(np.uint8)
 
-    # Phase 2: Region growing from seed points
+    # Region growing
     result_mask = np.zeros_like(seed_mask)
     seed_points = np.argwhere(seed_mask > 0)
-
     visited = np.zeros_like(seed_mask, dtype=bool)
 
     for sy, sx in seed_points:
@@ -104,8 +99,6 @@ def detect_ssotsu(
         grow_thresh = seed_intensity * region_grow_threshold
 
         stack = [(sy, sx)]
-        region_pixels = []
-
         while stack:
             cy, cx = stack.pop()
             if cy < 0 or cy >= h or cx < 0 or cx >= w:
@@ -116,7 +109,6 @@ def detect_ssotsu(
                 continue
 
             visited[cy, cx] = True
-            region_pixels.append((cy, cx))
             result_mask[cy, cx] = 1
 
             for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
@@ -124,30 +116,29 @@ def detect_ssotsu(
                 if 0 <= ny < h and 0 <= nx < w and not visited[ny, nx]:
                     stack.append((ny, nx))
 
-    bboxes = binary_mask_to_bboxes(result_mask, min_area=min_area, max_area=max_area)
+    bboxes = binary_mask_to_bboxes(
+        result_mask, min_area=min_area, max_area=max_area,
+        dilation=dilation, box_padding=box_padding,
+    )
 
-    # Build a threshold map from the per-block local Otsu values scaled by
-    # seed_threshold_factor, so score = peak / local_seed_threshold per component.
-    # Recompute block thresholds to populate the map.
+    # Build threshold map for scoring
     thresh_map = np.zeros(img_u8.shape, dtype=np.float32)
-    h, w = img_u8.shape
     for y in range(0, h, block_size):
         for x in range(0, w, block_size):
             block = img_u8[y: min(y + block_size, h), x: min(x + block_size, w)]
-            if block.std() < 1:
-                local_t = float(img_u8.mean())
+            nonzero_block = block[block > 0]
+            if len(nonzero_block) < 10 or nonzero_block.std() < 1:
+                local_t = 1.0
             else:
                 try:
-                    local_t = float(threshold_otsu(block)) * seed_threshold_factor
+                    local_t = float(threshold_otsu(nonzero_block)) * seed_threshold_factor
                 except ValueError:
-                    local_t = float(img_u8.mean())
+                    local_t = 1.0
             thresh_map[y: y + block.shape[0], x: x + block.shape[1]] = max(local_t, 1.0)
 
     _, scores = binary_mask_to_bboxes_with_scores(
-        result_mask,
-        img_u8.astype(np.float32),
-        threshold_map=thresh_map,
-        min_area=min_area,
-        max_area=max_area,
+        result_mask, img_u8.astype(np.float32), threshold_map=thresh_map,
+        min_area=min_area, max_area=max_area,
+        dilation=dilation, box_padding=box_padding,
     )
     return bboxes, result_mask, scores

@@ -49,20 +49,15 @@ def infer_yolov11(args, test_ann):
     output_dir = Path(args.output_dir)
     image_dir = Path(args.image_dir)
 
-    # Find all seed checkpoints
-    best_weights = sorted(weights_dir.rglob("best.pt"))
-    if not best_weights:
-        best_weights = sorted(weights_dir.rglob("*.pt"))
-
     seeds = cfg["training"]["seeds"]
     use_sahi = cfg.get("sahi", {}).get("enabled", False)
 
-    for i, seed in enumerate(seeds):
-        if i >= len(best_weights):
+    for seed in seeds:
+        weight_path = weights_dir / f"best_seed{seed}.pt"
+        if not weight_path.exists():
             print(f"  No checkpoint found for seed {seed}, skipping")
             continue
 
-        weight_path = best_weights[i]
         print(f"\n--- YOLOv11 seed={seed} weights={weight_path} ---")
 
         all_preds = []
@@ -221,14 +216,13 @@ def infer_rt_detr(args, test_ann):
     image_dir = Path(args.image_dir)
 
     seeds = cfg["training"]["seeds"]
-    best_weights = sorted(weights_dir.rglob("best.pt"))
 
-    for i, seed in enumerate(seeds):
-        if i >= len(best_weights):
+    for seed in seeds:
+        weight_path = weights_dir / f"best_seed{seed}.pt"
+        if not weight_path.exists():
             print(f"  No checkpoint for seed {seed}, skipping")
             continue
 
-        weight_path = best_weights[i]
         print(f"\n--- RT-DETR seed={seed} ---")
 
         all_preds = []

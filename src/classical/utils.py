@@ -5,10 +5,36 @@ import numpy as np
 from skimage import measure
 
 
+def dilate_mask(mask: np.ndarray, dilation: int = 0) -> np.ndarray:
+    """Dilate a binary mask to grow detected regions."""
+    if dilation <= 0:
+        return mask
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * dilation + 1, 2 * dilation + 1))
+    return cv2.dilate(mask.astype(np.uint8), kernel, iterations=1)
+
+
+def pad_bboxes(bboxes: np.ndarray, padding: int = 0, img_shape: tuple | None = None) -> np.ndarray:
+    """Pad bounding boxes by a fixed number of pixels on each side."""
+    if padding <= 0 or len(bboxes) == 0:
+        return bboxes
+    bboxes = bboxes.copy()
+    bboxes[:, 0] -= padding  # x1
+    bboxes[:, 1] -= padding  # y1
+    bboxes[:, 2] += padding  # x2
+    bboxes[:, 3] += padding  # y2
+    if img_shape is not None:
+        h, w = img_shape[:2]
+        bboxes[:, [0, 2]] = np.clip(bboxes[:, [0, 2]], 0, w)
+        bboxes[:, [1, 3]] = np.clip(bboxes[:, [1, 3]], 0, h)
+    return bboxes
+
+
 def binary_mask_to_bboxes(
     mask: np.ndarray,
     min_area: int = 10,
     max_area: int = 50000,
+    dilation: int = 0,
+    box_padding: int = 0,
 ) -> np.ndarray:
     """Convert a binary mask to bounding boxes via connected components.
 
@@ -16,10 +42,15 @@ def binary_mask_to_bboxes(
         mask: Binary mask (0/1 or bool).
         min_area: Minimum component area to keep.
         max_area: Maximum component area to keep.
+        dilation: Dilate the mask by this many pixels before extraction.
+        box_padding: Pad each output box by this many pixels on each side.
 
     Returns:
         (N, 4) array of [x1, y1, x2, y2] bounding boxes.
     """
+    if dilation > 0:
+        mask = dilate_mask(mask, dilation)
+
     labels = measure.label(mask.astype(np.uint8), connectivity=2)
     regions = measure.regionprops(labels)
 
@@ -27,11 +58,13 @@ def binary_mask_to_bboxes(
     for region in regions:
         if region.area < min_area or region.area > max_area:
             continue
-        # regionprops bbox is (min_row, min_col, max_row, max_col)
         y1, x1, y2, x2 = region.bbox
         bboxes.append([x1, y1, x2, y2])
 
-    return np.array(bboxes, dtype=np.float32).reshape(-1, 4)
+    result = np.array(bboxes, dtype=np.float32).reshape(-1, 4)
+    if box_padding > 0 and len(result) > 0:
+        result = pad_bboxes(result, box_padding, mask.shape)
+    return result
 
 
 def binary_mask_to_bboxes_with_props(
@@ -75,6 +108,8 @@ def binary_mask_to_bboxes_with_scores(
     threshold_map: np.ndarray | None = None,
     min_area: int = 10,
     max_area: int = 50000,
+    dilation: int = 0,
+    box_padding: int = 0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Convert a binary mask to bounding boxes with per-detection confidence scores.
 
@@ -97,6 +132,9 @@ def binary_mask_to_bboxes_with_scores(
     Returns:
         Tuple of ((N, 4) bboxes in [x1, y1, x2, y2], (N,) scores in [0, 1]).
     """
+    if dilation > 0:
+        mask = dilate_mask(mask, dilation)
+
     labels = measure.label(mask.astype(np.uint8), connectivity=2)
     regions = measure.regionprops(labels, intensity_image=intensity_image.astype(np.float32))
 
@@ -138,6 +176,8 @@ def binary_mask_to_bboxes_with_scores(
         scores_arr = scores_arr / s_max
     scores_arr = np.clip(scores_arr, 0.0, 1.0)
 
+    if box_padding > 0 and len(bboxes_arr) > 0:
+        bboxes_arr = pad_bboxes(bboxes_arr, box_padding, mask.shape)
     return bboxes_arr, scores_arr
 
 

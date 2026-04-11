@@ -5,7 +5,7 @@ wavelet:
   name: "Wavelet-SWT"
   wavelet: "db4"              # wavelet family
   level: 3                    # decomposition levels
-  threshold_sigma: 3.0        # threshold = mean + sigma * std of HF subband
+  threshold_sigma: 4.0        # threshold = mean + sigma * std of HF subband (raised to reduce FPs)
   subbands: ["LH", "HL", "HH"]  # high-frequency subbands to threshold
   combine_mode: "max"         # how to combine subbands: max, sum, or
-  min_area: 15                # minimum connected component area
+  min_area: 50                # minimum connected component area

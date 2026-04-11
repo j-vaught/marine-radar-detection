@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.data.polar_to_coco import convert_dataset as polar_to_coco, convert_all_datasets
 from src.data.haxr_renderer import render_dataset as render_haxr
 from src.data.preprocessing import apply_clahe
+from src.data.radar_mask import apply_radar_mask, create_radar_mask
 from src.data.tiling import tile_image, clip_boxes_to_tile
 from src.data.splits import save_split, print_split_stats
 from src.data.format_converters import (
@@ -115,9 +116,13 @@ def process_dlr(raw_dir: Path, output_dir: Path, cfg: dict, apply_clahe_flag: bo
         if src.exists() and not dst.exists():
             img = cv2.imread(str(src))
             if img is not None:
-                # Convert RGB to grayscale for consistency
+                # Extract red channel (BGR index 2) -- contains radar returns
+                # without blue background or green UI marks (bearing ticks, compass)
                 if len(img.shape) == 3:
-                    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                    img = img[:, :, 2]  # Red channel in BGR
+                # Mask out everything outside the PPI circle (set to true zero)
+                radar_msk = create_radar_mask(img.shape[0], img.shape[1])
+                img[radar_msk == 0] = 0
                 if apply_clahe_flag:
                     img = apply_clahe(img)
                 cv2.imwrite(str(dst), img)

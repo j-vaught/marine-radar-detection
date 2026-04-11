@@ -10,7 +10,7 @@ model:
 
 training:
   epochs: 80
-  batch_size: 16
+  batch_size: 4
   optimizer: "AdamW"
   lr: 0.001
   weight_decay: 0.01

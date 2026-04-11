@@ -54,14 +54,20 @@ def _cfar_threshold_map(
     if mode == "CA":
         threshold = alpha * background
     elif mode == "GO":
-        # Greatest-of: use the max of leading/lagging estimates
-        # Approximate with shifted filters
-        leading = uniform_filter(image, size=(rh, 2 * rw + 1), mode="reflect", origin=(-rh // 2, 0))
-        lagging = uniform_filter(image, size=(rh, 2 * rw + 1), mode="reflect", origin=(rh // 2, 0))
+        # Greatest-of: use the max of leading/lagging half-window estimates
+        # Split the reference window vertically around the CUT
+        lead_size = (rh + gh + 1, 2 * rw + 1)
+        lag_size = (rh + gh + 1, 2 * rw + 1)
+        lead_origin = min((lead_size[0] - 1) // 2, rh // 2)
+        leading = uniform_filter(image, size=lead_size, mode="reflect", origin=(-lead_origin, 0))
+        lagging = uniform_filter(image, size=lag_size, mode="reflect", origin=(lead_origin, 0))
         threshold = alpha * np.maximum(leading, lagging)
     elif mode == "SO":
-        leading = uniform_filter(image, size=(rh, 2 * rw + 1), mode="reflect", origin=(-rh // 2, 0))
-        lagging = uniform_filter(image, size=(rh, 2 * rw + 1), mode="reflect", origin=(rh // 2, 0))
+        lead_size = (rh + gh + 1, 2 * rw + 1)
+        lag_size = (rh + gh + 1, 2 * rw + 1)
+        lead_origin = min((lead_size[0] - 1) // 2, rh // 2)
+        leading = uniform_filter(image, size=lead_size, mode="reflect", origin=(-lead_origin, 0))
+        lagging = uniform_filter(image, size=lag_size, mode="reflect", origin=(lead_origin, 0))
         threshold = alpha * np.minimum(leading, lagging)
     else:
         raise ValueError(f"Unknown CFAR mode: {mode}")
@@ -116,6 +122,8 @@ def detect_cfar(
     mode: str = "CA",
     k_os: float = 0.75,
     min_area: int = 20,
+    dilation: int = 5,
+    box_padding: int = 12,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Run CFAR detection.
 
@@ -127,14 +135,17 @@ def detect_cfar(
         mode: 'CA', 'GO', 'SO', or 'OS'.
         k_os: Order statistic rank fraction (OS-CFAR only).
         min_area: Minimum connected component area.
+        dilation: Dilate binary mask before component extraction.
+        box_padding: Pad each output box by this many pixels per side.
 
     Returns:
-        Tuple of (bboxes, binary_mask, scores) where scores are normalised
-        peak-to-threshold ratios in [0, 1] for each detection.
+        Tuple of (bboxes, binary_mask, scores).
     """
     threshold = _cfar_threshold_map(image, guard, ref, pfa, mode, k_os)
-    mask = (image > threshold).astype(np.uint8)
+    # Only detect where image has actual signal (not masked zeros)
+    mask = ((image > threshold) & (image > 0)).astype(np.uint8)
     bboxes, scores = binary_mask_to_bboxes_with_scores(
-        mask, image, threshold_map=threshold, min_area=min_area
+        mask, image, threshold_map=threshold, min_area=min_area,
+        dilation=dilation, box_padding=box_padding,
     )
     return bboxes, mask, scores

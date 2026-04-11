@@ -17,30 +17,36 @@ def detect_morphological(
     max_area: int = 50000,
     min_eccentricity: float = 0.0,
     max_eccentricity: float = 0.99,
+    dilation: int = 5,
+    box_padding: int = 12,
 ) -> tuple[np.ndarray, np.ndarray, list[dict], np.ndarray]:
     """Morphological detection pipeline.
 
-    Pipeline: Otsu threshold -> opening (erosion+dilation) -> closing -> connected components
-    with region property filtering.
+    Pipeline: Otsu threshold (on non-zero pixels only) -> opening -> closing ->
+    dilation -> connected components with region property filtering + box padding.
 
     Args:
         image: Grayscale input image (uint8 or float [0,1]).
 
     Returns:
-        Tuple of (bboxes, binary_mask, region_properties, scores) where scores
-        are normalised mean-intensity-to-Otsu-threshold ratios in [0, 1].
+        Tuple of (bboxes, binary_mask, region_properties, scores).
     """
-    # Ensure uint8
     if image.dtype in (np.float32, np.float64):
         img_u8 = (image * 255).astype(np.uint8)
     else:
         img_u8 = image.copy()
 
-    # Otsu binarization
-    thresh = threshold_otsu(img_u8)
-    binary = (img_u8 > thresh).astype(np.uint8)
+    # Compute Otsu threshold only on non-zero pixels (masked images have zeros outside PPI)
+    nonzero = img_u8[img_u8 > 0]
+    if len(nonzero) < 100:
+        empty = np.zeros((0, 4), dtype=np.float32)
+        return empty, np.zeros_like(img_u8), [], np.zeros(0, dtype=np.float32)
 
-    # Morphological opening (erosion then dilation) to remove noise
+    thresh = threshold_otsu(nonzero)
+    # Apply threshold only where pixels are non-zero (inside PPI)
+    binary = ((img_u8 > thresh) & (img_u8 > 0)).astype(np.uint8)
+
+    # Morphological opening to remove noise
     kernel_open = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE, (opening_kernel_size, opening_kernel_size)
     )
@@ -61,9 +67,7 @@ def detect_morphological(
         max_eccentricity=max_eccentricity,
     )
 
-    # Scores: mean intensity of each component relative to the Otsu threshold.
-    # Use a constant threshold_map equal to the global Otsu value so that
-    # binary_mask_to_bboxes_with_scores computes peak / thresh per component.
+    # Scores
     threshold_map = np.full(closed.shape, float(thresh), dtype=np.float32)
     _, scores = binary_mask_to_bboxes_with_scores(
         closed,
@@ -71,6 +75,15 @@ def detect_morphological(
         threshold_map=threshold_map,
         min_area=min_area,
         max_area=max_area,
+        dilation=dilation,
+        box_padding=box_padding,
+    )
+
+    # Re-extract bboxes with dilation and padding for the actual output
+    from .utils import binary_mask_to_bboxes
+    bboxes = binary_mask_to_bboxes(
+        closed, min_area=min_area, max_area=max_area,
+        dilation=dilation, box_padding=box_padding,
     )
 
     return bboxes, closed, props, scores

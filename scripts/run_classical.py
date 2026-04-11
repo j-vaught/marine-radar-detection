@@ -17,6 +17,7 @@ from src.classical.morphological import detect_morphological
 from src.classical.wavelet import detect_wavelet
 from src.classical.otsu_ssotsu import detect_otsu, detect_ssotsu
 from src.evaluation.metrics import format_predictions_coco, xyxy_to_xywh
+from src.data.radar_mask import apply_radar_mask, create_radar_mask, filter_boxes_by_mask
 
 
 def parse_args():
@@ -124,6 +125,9 @@ def main():
         with open(cfg_file) as f:
             configs[cfg_file.stem] = yaml.safe_load(f)
 
+    # Pre-compute radar mask (same for all DLR images)
+    radar_mask = None
+
     # Run each method
     for method_name in args.methods:
         print(f"\nRunning {method_name}...")
@@ -138,8 +142,19 @@ def main():
             if image is None:
                 continue
 
+            # Apply radar mask to zero out UI elements
+            if radar_mask is None or radar_mask.shape != image.shape:
+                radar_mask = create_radar_mask(image.shape[0], image.shape[1])
+            image = apply_radar_mask(image, radar_mask)
+
             image_float = image.astype(np.float32) / 255.0
             bboxes, scores = run_method(method_name, image_float, configs)
+
+            # Filter detections outside radar circle
+            if len(bboxes) > 0:
+                keep = filter_boxes_by_mask(bboxes, img_width=image.shape[1], img_height=image.shape[0])
+                bboxes = bboxes[keep]
+                scores = scores[keep]
 
             preds = format_predictions_coco(img_info["id"], bboxes, scores)
             all_predictions.extend(preds)

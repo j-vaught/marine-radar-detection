@@ -1,10 +1,10 @@
-# YOLOv11-OBB with SAHI Tiled Inference
+# YOLOv11 Detection with SAHI Tiled Inference
 
 model:
-  name: "YOLOv11-OBB"
-  variant: "yolo11m-obb"       # medium variant
+  name: "YOLOv11"
+  variant: "yolo11m"           # medium variant (standard detection)
   pretrained: true
-  task: "obb"
+  task: "detect"
 
 training:
   epochs: 100
@@ -20,7 +20,7 @@ training:
   seeds: [42, 123, 456]        # 3-seed training
 
 sahi:
-  enabled: true
+  enabled: false
   slice_height: 640
   slice_width: 640
   overlap_height_ratio: 0.2
