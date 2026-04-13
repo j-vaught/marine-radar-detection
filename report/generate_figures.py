@@ -239,26 +239,41 @@ def fig_multimetric(df: pd.DataFrame, out_path: Path) -> None:
 # ── Figure 3: preprocessing comparison ───────────────────────────────────
 
 def fig_preprocess(out_path: Path, img_stem: str = "DAAN_342") -> None:
-    """Raw -> red channel -> masked -> GT overlay."""
+    """Raw -> red channel -> masked -> GT overlay.
+
+    All panels are tightly cropped around the actual PPI disc so the radar
+    content fills each panel and empty corners are removed.
+    """
     raw_path = Path("data/raw/DAAN/radarImages") / f"{img_stem.split('_')[1]}.png"
     if not raw_path.exists():
-        # Fallback to another image
         raw_path = Path("data/raw/DAAN/radarImages") / "010.png"
 
     raw = cv2.imread(str(raw_path))  # BGR
     raw_rgb = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
     red_only = raw[:, :, 2]  # R in BGR index 2
-
-    # Circular mask
     h, w = red_only.shape
-    cx, cy = w // 2, h // 2
-    r = int(min(w, h) / 2 * 0.92)
+
+    # Actual PPI geometry (measured from radial profile of DLR captures).
+    # The useful radar disc is centred at ≈ (514, 508) with an outer ring
+    # at r ≈ 490. We use r=488 to sit just inside the bright outer ring.
+    cx, cy = 514, 508
+    r_ppi = 488
+
     mask = np.zeros((h, w), dtype=np.uint8)
-    cv2.circle(mask, (cx, cy), r, 255, -1)
+    cv2.circle(mask, (cx, cy), r_ppi, 255, -1)
     masked = red_only.copy()
     masked[mask == 0] = 0
 
-    # GT overlay
+    # Tight crop window around the circle (+margin)
+    pad = 8
+    x1, x2 = max(0, cx - r_ppi - pad), min(w, cx + r_ppi + pad)
+    y1, y2 = max(0, cy - r_ppi - pad), min(h, cy + r_ppi + pad)
+
+    raw_crop     = raw_rgb[y1:y2, x1:x2]
+    red_crop     = red_only[y1:y2, x1:x2]
+    masked_crop  = masked[y1:y2, x1:x2]
+
+    # GT overlay: offset into the crop coordinate frame
     gt_path = Path("data/processed/annotations/test.json")
     with open(gt_path) as f:
         gt_all = json.load(f)
@@ -269,7 +284,7 @@ def fig_preprocess(out_path: Path, img_stem: str = "DAAN_342") -> None:
         gt_boxes = [a["bbox"] for a in gt_all["annotations"]
                     if a["image_id"] == img_info["id"]]
 
-    fig, axes = plt.subplots(1, 4, figsize=(13, 3.5))
+    fig, axes = plt.subplots(1, 4, figsize=(13, 3.6))
 
     titles = [
         "(a) Raw BGR PPI capture",
@@ -277,9 +292,9 @@ def fig_preprocess(out_path: Path, img_stem: str = "DAAN_342") -> None:
         "(c) + Circular mask",
         "(d) + DBSCAN ground truth",
     ]
-    imgs = [raw_rgb, red_only, masked, masked]
+    crops = [raw_crop, red_crop, masked_crop, masked_crop]
 
-    for ax, img, t in zip(axes, imgs, titles):
+    for ax, img, t in zip(axes, crops, titles):
         if img.ndim == 2:
             ax.imshow(img, cmap="gray", vmin=0, vmax=255)
         else:
@@ -291,10 +306,10 @@ def fig_preprocess(out_path: Path, img_stem: str = "DAAN_342") -> None:
             spine.set_edgecolor(BLACK)
             spine.set_linewidth(0.7)
 
-    # GT overlay on last panel
-    for x, y, bw, bh in gt_boxes:
-        rect = Rectangle((x, y), bw, bh, linewidth=1.6, edgecolor=GARNET,
-                         facecolor="none")
+    # GT overlay on last panel — boxes already in full-image coords, shift by crop offset
+    for bx, by, bw, bh in gt_boxes:
+        rect = Rectangle((bx - x1, by - y1), bw, bh, linewidth=1.6,
+                         edgecolor=GARNET, facecolor="none")
         axes[-1].add_patch(rect)
 
     plt.tight_layout()
@@ -305,8 +320,8 @@ def fig_preprocess(out_path: Path, img_stem: str = "DAAN_342") -> None:
 # ── Figure 4: qualitative detection comparison ───────────────────────────
 
 def fig_qualitative(out_path: Path) -> None:
-    """Sample image with GT + top predictions from key methods."""
-    # Load GT
+    """Sample image with GT + top predictions from the four classical methods
+    with non-trivial AP. Every panel is tightly cropped around the PPI disc."""
     with open("data/processed/annotations/test.json") as f:
         gt = json.load(f)
 
@@ -314,95 +329,90 @@ def fig_qualitative(out_path: Path) -> None:
     for a in gt["annotations"]:
         gt_by_img.setdefault(a["image_id"], []).append(a)
 
-    # Pick 2 images: one with many targets, one with few but clear
-    img_list = sorted(gt["images"], key=lambda i: len(gt_by_img.get(i["id"], [])),
-                      reverse=True)
-    chosen = []
-    for img_info in img_list:
+    # Choose two representative frames with 3–8 targets.
+    chosen: list[dict] = []
+    for img_info in sorted(gt["images"],
+                           key=lambda i: len(gt_by_img.get(i["id"], [])),
+                           reverse=True):
         n = len(gt_by_img.get(img_info["id"], []))
         if 3 <= n <= 8:
             chosen.append(img_info)
         if len(chosen) >= 2:
             break
 
-    # Load method predictions
     method_specs = [
-        ("wavelet",       "Wavelet-SWT",   GARNET,    "classical"),
-        ("morphological", "Morphological", ROSE,      "classical"),
-        ("ca_cfar",       "CA-CFAR",       CONGAREE,  "classical"),
-        ("yolov11",       "YOLOv11 (seed 456)", ATLANTIC,  "dl"),
+        ("wavelet",       "Wavelet-SWT",   GARNET),
+        ("morphological", "Morphological", ROSE),
+        ("otsu",          "Otsu",          HORSESHOE),
+        ("ca_cfar",       "CA-CFAR",       CONGAREE),
     ]
     method_preds = {}
-    for m, _, _, kind in method_specs:
-        base = "results/classical" if kind == "classical" else "results/deep_learning_v2"
-        if kind == "classical":
-            path = f"{base}/{m}_predictions.json"
-        else:
-            path = f"{base}/{m}_seed456_predictions.json"
-        with open(path) as f:
-            preds = json.load(f)
-        method_preds[m] = preds
+    for m, *_ in method_specs:
+        with open(f"results/classical/{m}_predictions.json") as f:
+            method_preds[m] = json.load(f)
 
-    n_cols = 1 + len(method_specs)   # GT + methods
+    # Same PPI centre/radius as fig_preprocess for visual consistency.
+    cx, cy, r_ppi, pad = 514, 508, 488, 8
+
+    n_cols = 1 + len(method_specs)
     fig, axes = plt.subplots(len(chosen), n_cols,
-                             figsize=(3.2 * n_cols, 3.5 * len(chosen)))
+                             figsize=(2.9 * n_cols, 3.3 * len(chosen)))
     if len(chosen) == 1:
         axes = axes[np.newaxis, :]
 
     for row, img_info in enumerate(chosen):
         img = cv2.imread(f"data/processed/images/{img_info['file_name']}",
                          cv2.IMREAD_GRAYSCALE)
+        h, w = img.shape
+        x1, x2 = max(0, cx - r_ppi - pad), min(w, cx + r_ppi + pad)
+        y1, y2 = max(0, cy - r_ppi - pad), min(h, cy + r_ppi + pad)
+        crop = img[y1:y2, x1:x2]
         gts = gt_by_img.get(img_info["id"], [])
 
         # GT column
         ax = axes[row, 0]
-        ax.imshow(img, cmap="gray", vmin=0, vmax=255)
+        ax.imshow(crop, cmap="gray", vmin=0, vmax=255)
         for a in gts:
-            x, y, bw, bh = a["bbox"]
-            rect = Rectangle((x, y), bw, bh, linewidth=1.8,
-                             edgecolor=GARNET, facecolor="none")
-            ax.add_patch(rect)
+            bx, by, bw, bh = a["bbox"]
+            ax.add_patch(Rectangle((bx - x1, by - y1), bw, bh,
+                                   linewidth=1.7, edgecolor=GARNET,
+                                   facecolor="none"))
         if row == 0:
-            ax.set_title(f"Ground Truth\n({len(gts)} objects)", fontsize=10)
+            ax.set_title(f"Ground truth\n({len(gts)} targets)", fontsize=10)
         else:
-            ax.set_title(f"({len(gts)} objects)", fontsize=10)
+            ax.set_title(f"({len(gts)} targets)", fontsize=10)
         ax.set_ylabel(img_info["file_name"], fontsize=9)
-        ax.set_xticks([])
-        ax.set_yticks([])
+        ax.set_xticks([]); ax.set_yticks([])
         for sp in ax.spines.values():
             sp.set_edgecolor(BLACK); sp.set_linewidth(0.7)
 
-        # Method columns (always display GT in garnet underneath, preds in method color)
-        for col, (m, label, colour, kind) in enumerate(method_specs, start=1):
-            preds = method_preds[m]
-            # For this image only
-            img_preds = [p for p in preds if p["image_id"] == img_info["id"]]
-            # If DL + tiled, image_ids refer to tiles, so skip cross-checking
-            if kind == "dl":
-                # Try to find matching tiles' predictions via tile metadata
-                img_preds = []   # DL was evaluated on tiles; skip for full images
-
-            img_preds = sorted(img_preds, key=lambda p: -p.get("score", 0))[:40]
+        # Method columns
+        for col, (m, label, colour) in enumerate(method_specs, start=1):
+            preds = [p for p in method_preds[m] if p["image_id"] == img_info["id"]]
+            # Skip implausibly large boxes (PPI ring false positives) — GT is ~33x33.
+            preds = [p for p in preds if p["bbox"][2] * p["bbox"][3] < 20000]
+            preds = sorted(preds, key=lambda p: -p.get("score", 0))[:40]
 
             ax = axes[row, col]
-            ax.imshow(img, cmap="gray", vmin=0, vmax=255)
+            ax.imshow(crop, cmap="gray", vmin=0, vmax=255)
             # Faint GT
             for a in gts:
-                x, y, bw, bh = a["bbox"]
-                ax.add_patch(Rectangle((x, y), bw, bh, linewidth=0.9,
-                                       edgecolor=GARNET, facecolor="none",
+                bx, by, bw, bh = a["bbox"]
+                ax.add_patch(Rectangle((bx - x1, by - y1), bw, bh,
+                                       linewidth=0.9, edgecolor=GARNET,
+                                       facecolor="none",
                                        linestyle=(0, (2, 2)), alpha=0.7))
             # Method predictions
-            for p in img_preds:
-                x, y, bw, bh = p["bbox"]
-                ax.add_patch(Rectangle((x, y), bw, bh, linewidth=1.3,
-                                       edgecolor=colour, facecolor="none"))
+            for p in preds:
+                bx, by, bw, bh = p["bbox"]
+                ax.add_patch(Rectangle((bx - x1, by - y1), bw, bh,
+                                       linewidth=1.2, edgecolor=colour,
+                                       facecolor="none"))
             if row == 0:
-                ax.set_title(f"{label}\n({len(img_preds)} shown)", fontsize=10)
+                ax.set_title(f"{label}\n(top-{len(preds)})", fontsize=10)
             else:
-                ax.set_title(f"({len(img_preds)} shown)", fontsize=10)
-            ax.set_xticks([])
-            ax.set_yticks([])
+                ax.set_title(f"(top-{len(preds)})", fontsize=10)
+            ax.set_xticks([]); ax.set_yticks([])
             for sp in ax.spines.values():
                 sp.set_edgecolor(BLACK); sp.set_linewidth(0.7)
 

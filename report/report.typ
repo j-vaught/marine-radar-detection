@@ -251,11 +251,13 @@ drives every classical detector to fire on compass marks
   placement: auto,
   scope: "parent",
   caption: [
-    *Four-stage preprocessing pipeline* for DAAN_342.png. (a) raw BGR capture;
-    (b) red-channel only isolates radar returns (target R ≈ 226, background
-    R ≈ 0, whereas B ≈ 140 everywhere); (c) circular PPI masking with
-    $r_"mask" = 471$ zeros all UI elements; (d) DBSCAN-derived ground-truth
-    boxes superimposed in garnet.
+    *Four-stage preprocessing pipeline* for DAAN_342.png, shown tightly
+    cropped to the PPI disc (centre ≈ (514, 508), outer-ring radius ≈ 488).
+    (a) raw BGR capture; (b) red-channel only isolates radar returns
+    (target $R ≈ 226$, background $R ≈ 0$, whereas $B ≈ 140$ everywhere,
+    so green bearing ticks and blue PPI background both vanish);
+    (c) circular masking zeros the residual outer ring and corner chrome;
+    (d) DBSCAN-derived ground-truth boxes superimposed in garnet.
   ],
 ) <fig:preprocess>
 
@@ -428,27 +430,27 @@ cluster tightly near zero.
 
 == Qualitative Analysis
 
-@fig:qualitative compares predictions from three classical detectors
-against ground truth on two representative DAAN test frames. Wavelet-SWT
-recovers every visible target plus a small number of clutter responses;
-CA-CFAR produces tight but fragmented detections on the bright cores;
-morphological strikes a balance. Ground truth is overlaid as dashed
-garnet boxes in every panel for reference. The YOLOv11 column is empty
-because the deep model was trained and validated on 640² tiles and
-cannot be applied directly to full-resolution PPI frames — evaluating
-that same model on its tile space yields mean AP\@0.50 = 0.0005 across
-seeds (@tab:main).
+@fig:qualitative compares predictions from the four strongest classical
+detectors against ground truth on two representative DAAN test frames.
+Wavelet-SWT recovers every visible target plus a small number of clutter
+responses; CA-CFAR produces tight but fragmented detections on the bright
+cores; Otsu and morphological fall between these extremes. Ground truth
+is overlaid as dashed garnet boxes in every panel for reference. We omit
+the deep models from this qualitative panel because they were trained
+and evaluated exclusively on 640² tiles; on the same tile space they
+achieve mean AP\@0.50 = 0.0005 across seeds (@tab:main).
 
 #figure(
   image("figures/fig4_qualitative.png", width: 100%),
   placement: auto,
   scope: "parent",
   caption: [
-    Qualitative comparison on two DAAN test frames. Dashed garnet
-    rectangles = ground truth; coloured rectangles = top-40
-    predictions per method. Top row: *DAAN_342* (5 targets). Bottom row:
-    *DAAN_009* (5 targets). Classical detectors localise the bright
-    vessel cores but with smaller box support than the padded GT.
+    Qualitative comparison on two DAAN test frames, tightly cropped to
+    the PPI disc. Dashed garnet rectangles = ground truth; coloured
+    rectangles = top predictions per method (box area < 20,000 px² to
+    suppress PPI-ring false positives). Classical detectors localise
+    the bright vessel cores but produce extra boxes on clutter and
+    residual ring artefacts.
   ],
 ) <fig:qualitative>
 
