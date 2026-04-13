@@ -1,0 +1,13 @@
+{
+  "dataset": "DAAN",
+  "image": "342.png",
+  "cx": 531,
+  "cy": 515,
+  "radius": 466,
+  "left": 0,
+  "right": 0,
+  "top": 0,
+  "bottom": 0,
+  "draw_mask_ring": true,
+  "_notes": "cx/cy/radius are the measured PPI circle. left/right/top/bottom are set to 0 because the data pipeline applies the circular mask WITHOUT cropping the frame — cropping would invalidate GT bounding box coordinates."
+}

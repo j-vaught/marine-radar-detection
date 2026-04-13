@@ -238,11 +238,26 @@ def fig_multimetric(df: pd.DataFrame, out_path: Path) -> None:
 
 # ── Figure 3: preprocessing comparison ───────────────────────────────────
 
+def load_crop_cfg() -> dict:
+    """Load tuner-configured crop parameters if available."""
+    cfg_path = Path("tools/crop_config.json")
+    if cfg_path.exists():
+        try:
+            with open(cfg_path) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"cx": 514, "cy": 508, "radius": 488,
+            "left": 20, "right": 20, "top": 10, "bottom": 10}
+
+
 def fig_preprocess(out_path: Path, img_stem: str = "DAAN_342") -> None:
     """Raw -> red channel -> masked -> GT overlay.
 
-    All panels are tightly cropped around the actual PPI disc so the radar
-    content fills each panel and empty corners are removed.
+    Panels retain the full 1050x1024 frame (no rectangular crop) so ground-
+    truth box coordinates are rendered at their real image positions.
+    The circular mask zeros the outside-disc pixels; the display axes clip
+    to the disc bounding box to remove empty corners.
     """
     raw_path = Path("data/raw/DAAN/radarImages") / f"{img_stem.split('_')[1]}.png"
     if not raw_path.exists():
@@ -250,30 +265,19 @@ def fig_preprocess(out_path: Path, img_stem: str = "DAAN_342") -> None:
 
     raw = cv2.imread(str(raw_path))  # BGR
     raw_rgb = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
-    red_only = raw[:, :, 2]  # R in BGR index 2
+    red_only = raw[:, :, 2]
     h, w = red_only.shape
 
-    # Actual PPI geometry (measured from radial profile of DLR captures).
-    # The useful radar disc is centred at ≈ (514, 508) with an outer ring
-    # at r ≈ 490. We use r=488 to sit just inside the bright outer ring.
-    cx, cy = 514, 508
-    r_ppi = 488
+    cfg = load_crop_cfg()
+    cx, cy = int(cfg["cx"]), int(cfg["cy"])
+    r_ppi  = int(cfg["radius"])
 
     mask = np.zeros((h, w), dtype=np.uint8)
     cv2.circle(mask, (cx, cy), r_ppi, 255, -1)
     masked = red_only.copy()
     masked[mask == 0] = 0
 
-    # Tight crop window around the circle (+margin)
-    pad = 8
-    x1, x2 = max(0, cx - r_ppi - pad), min(w, cx + r_ppi + pad)
-    y1, y2 = max(0, cy - r_ppi - pad), min(h, cy + r_ppi + pad)
-
-    raw_crop     = raw_rgb[y1:y2, x1:x2]
-    red_crop     = red_only[y1:y2, x1:x2]
-    masked_crop  = masked[y1:y2, x1:x2]
-
-    # GT overlay: offset into the crop coordinate frame
+    # GT in native full-image coordinates — no offset needed.
     gt_path = Path("data/processed/annotations/test.json")
     with open(gt_path) as f:
         gt_all = json.load(f)
@@ -284,6 +288,11 @@ def fig_preprocess(out_path: Path, img_stem: str = "DAAN_342") -> None:
         gt_boxes = [a["bbox"] for a in gt_all["annotations"]
                     if a["image_id"] == img_info["id"]]
 
+    # Display axis limits: just the circle bounding box with a small margin.
+    pad = 8
+    xlim = (max(0, cx - r_ppi - pad), min(w, cx + r_ppi + pad))
+    ylim = (min(h, cy + r_ppi + pad), max(0, cy - r_ppi - pad))  # y inverted
+
     fig, axes = plt.subplots(1, 4, figsize=(13, 3.6))
 
     titles = [
@@ -292,25 +301,24 @@ def fig_preprocess(out_path: Path, img_stem: str = "DAAN_342") -> None:
         "(c) + Circular mask",
         "(d) + DBSCAN ground truth",
     ]
-    crops = [raw_crop, red_crop, masked_crop, masked_crop]
+    panels = [raw_rgb, red_only, masked, masked]
 
-    for ax, img, t in zip(axes, crops, titles):
+    for ax, img, t in zip(axes, panels, titles):
         if img.ndim == 2:
             ax.imshow(img, cmap="gray", vmin=0, vmax=255)
         else:
             ax.imshow(img)
+        ax.set_xlim(*xlim); ax.set_ylim(*ylim)
+        ax.set_aspect("equal")
         ax.set_title(t, fontsize=10)
-        ax.set_xticks([])
-        ax.set_yticks([])
+        ax.set_xticks([]); ax.set_yticks([])
         for spine in ax.spines.values():
-            spine.set_edgecolor(BLACK)
-            spine.set_linewidth(0.7)
+            spine.set_edgecolor(BLACK); spine.set_linewidth(0.7)
 
-    # GT overlay on last panel — boxes already in full-image coords, shift by crop offset
+    # GT overlay in full-image coordinates (no crop offset).
     for bx, by, bw, bh in gt_boxes:
-        rect = Rectangle((bx - x1, by - y1), bw, bh, linewidth=1.6,
-                         edgecolor=GARNET, facecolor="none")
-        axes[-1].add_patch(rect)
+        axes[-1].add_patch(Rectangle((bx, by), bw, bh, linewidth=1.6,
+                                     edgecolor=GARNET, facecolor="none"))
 
     plt.tight_layout()
     fig.savefig(out_path, dpi=300, bbox_inches="tight")
@@ -351,8 +359,10 @@ def fig_qualitative(out_path: Path) -> None:
         with open(f"results/classical/{m}_predictions.json") as f:
             method_preds[m] = json.load(f)
 
-    # Same PPI centre/radius as fig_preprocess for visual consistency.
-    cx, cy, r_ppi, pad = 514, 508, 488, 8
+    # Same PPI centre/radius as fig_preprocess (from tuner config).
+    cfg = load_crop_cfg()
+    cx, cy = int(cfg["cx"]), int(cfg["cy"])
+    r_ppi  = int(cfg["radius"])
 
     n_cols = 1 + len(method_specs)
     fig, axes = plt.subplots(len(chosen), n_cols,
@@ -360,23 +370,26 @@ def fig_qualitative(out_path: Path) -> None:
     if len(chosen) == 1:
         axes = axes[np.newaxis, :]
 
+    # Axis limits = circle bounding box with a small margin. No pixel cropping,
+    # so prediction / GT boxes render in their native full-image coordinates.
+    pad = 8
+
     for row, img_info in enumerate(chosen):
         img = cv2.imread(f"data/processed/images/{img_info['file_name']}",
                          cv2.IMREAD_GRAYSCALE)
         h, w = img.shape
-        x1, x2 = max(0, cx - r_ppi - pad), min(w, cx + r_ppi + pad)
-        y1, y2 = max(0, cy - r_ppi - pad), min(h, cy + r_ppi + pad)
-        crop = img[y1:y2, x1:x2]
+        xlim = (max(0, cx - r_ppi - pad), min(w, cx + r_ppi + pad))
+        ylim = (min(h, cy + r_ppi + pad), max(0, cy - r_ppi - pad))
         gts = gt_by_img.get(img_info["id"], [])
 
         # GT column
         ax = axes[row, 0]
-        ax.imshow(crop, cmap="gray", vmin=0, vmax=255)
+        ax.imshow(img, cmap="gray", vmin=0, vmax=255)
         for a in gts:
             bx, by, bw, bh = a["bbox"]
-            ax.add_patch(Rectangle((bx - x1, by - y1), bw, bh,
-                                   linewidth=1.7, edgecolor=GARNET,
-                                   facecolor="none"))
+            ax.add_patch(Rectangle((bx, by), bw, bh, linewidth=1.7,
+                                   edgecolor=GARNET, facecolor="none"))
+        ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_aspect("equal")
         if row == 0:
             ax.set_title(f"Ground truth\n({len(gts)} targets)", fontsize=10)
         else:
@@ -394,20 +407,19 @@ def fig_qualitative(out_path: Path) -> None:
             preds = sorted(preds, key=lambda p: -p.get("score", 0))[:40]
 
             ax = axes[row, col]
-            ax.imshow(crop, cmap="gray", vmin=0, vmax=255)
+            ax.imshow(img, cmap="gray", vmin=0, vmax=255)
             # Faint GT
             for a in gts:
                 bx, by, bw, bh = a["bbox"]
-                ax.add_patch(Rectangle((bx - x1, by - y1), bw, bh,
-                                       linewidth=0.9, edgecolor=GARNET,
-                                       facecolor="none",
+                ax.add_patch(Rectangle((bx, by), bw, bh, linewidth=0.9,
+                                       edgecolor=GARNET, facecolor="none",
                                        linestyle=(0, (2, 2)), alpha=0.7))
             # Method predictions
             for p in preds:
                 bx, by, bw, bh = p["bbox"]
-                ax.add_patch(Rectangle((bx - x1, by - y1), bw, bh,
-                                       linewidth=1.2, edgecolor=colour,
-                                       facecolor="none"))
+                ax.add_patch(Rectangle((bx, by), bw, bh, linewidth=1.2,
+                                       edgecolor=colour, facecolor="none"))
+            ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_aspect("equal")
             if row == 0:
                 ax.set_title(f"{label}\n(top-{len(preds)})", fontsize=10)
             else:

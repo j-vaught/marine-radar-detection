@@ -4,10 +4,16 @@ import cv2
 import numpy as np
 
 
-# Default radar circle parameters (derived from DLR dataset analysis)
-DEFAULT_CENTER_X = 525
-DEFAULT_CENTER_Y = 512
-DEFAULT_RADIUS = 471  # matches polar_to_pixel: min(1050,1024)/2 * 0.92
+# Default radar circle parameters (measured directly from DLR PPI captures
+# via the interactive crop tuner).  Note that ``polar_to_pixel`` in
+# ``polar_to_coco.py`` uses the naive image-centred formula
+# ``(min(W, H) / 2) * 0.92`` which gives (525, 512, 471); the measured display
+# is offset a few pixels to the lower-right, so GT bounding boxes produced by
+# that formula sit a few pixels off the real radar returns. Using the measured
+# values here ensures the mask matches the actual display.
+DEFAULT_CENTER_X = 531
+DEFAULT_CENTER_Y = 515
+DEFAULT_RADIUS   = 466
 
 
 def create_radar_mask(
@@ -28,9 +34,9 @@ def create_radar_mask(
         Binary mask (uint8, 0 or 255).
     """
     if center is None:
-        center = (width // 2, height // 2)
+        center = (DEFAULT_CENTER_X, DEFAULT_CENTER_Y)
     if radius is None:
-        radius = int(min(width, height) / 2 * 0.92)
+        radius = DEFAULT_RADIUS
 
     mask = np.zeros((height, width), dtype=np.uint8)
     cv2.circle(mask, center, radius, 255, -1)
@@ -77,9 +83,9 @@ def filter_boxes_by_mask(
         Boolean mask of which boxes to keep.
     """
     if center is None:
-        center = (img_width // 2, img_height // 2)
+        center = (DEFAULT_CENTER_X, DEFAULT_CENTER_Y)
     if radius is None:
-        radius = int(min(img_width, img_height) / 2 * 0.92)
+        radius = DEFAULT_RADIUS
 
     if len(bboxes) == 0:
         return np.array([], dtype=bool)
