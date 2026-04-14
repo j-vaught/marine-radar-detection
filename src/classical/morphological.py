@@ -17,8 +17,8 @@ def detect_morphological(
     max_area: int = 50000,
     min_eccentricity: float = 0.0,
     max_eccentricity: float = 0.99,
-    dilation: int = 5,
-    box_padding: int = 12,
+    dilation: int = 0,
+    box_padding: int = 0,
 ) -> tuple[np.ndarray, np.ndarray, list[dict], np.ndarray]:
     """Morphological detection pipeline.
 

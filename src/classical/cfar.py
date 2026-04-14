@@ -122,8 +122,8 @@ def detect_cfar(
     mode: str = "CA",
     k_os: float = 0.75,
     min_area: int = 20,
-    dilation: int = 5,
-    box_padding: int = 12,
+    dilation: int = 0,
+    box_padding: int = 0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Run CFAR detection.
 

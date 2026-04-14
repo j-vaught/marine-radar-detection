@@ -1,11 +1,11 @@
 """Generate publication-quality figures for the marine radar detection report.
 
-Brand palette (per author preferences):
-  Garnet   #73000A  (primary accent)
-  Black    #000000
-  Warm grey shades, Sandstorm
-  Accents: Rose, Atlantic, Congaree, Horseshoe, Grass, Honeycomb
+Reads results from:
+  - results/evaluation_summary_v3.csv     (DAAN unified: DL seeds + classical)
+  - results/classical_by_dataset.csv      (per-dataset: DAAN / DARC / MANV)
 
+Brand palette (per author preferences): Garnet #73000A, Atlantic, Congaree,
+Horseshoe, Rose, Honeycomb, Grass, plus the black / warm-grey neutrals.
 No rounded edges. High contrast. No emojis.
 """
 
@@ -14,8 +14,12 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import sys
 import warnings
 from pathlib import Path
+
+# make src.data.* importable regardless of invocation cwd
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import cv2
 import matplotlib as mpl
@@ -45,46 +49,41 @@ HORSESHOE  = "#65780B"
 GRASS      = "#CED318"
 HONEYCOMB  = "#A49137"
 
-# Colour assignments
+# Colour assignments — classical methods warm; DL models cool
 CLASSICAL_COLOURS = {
-    "wavelet":       GARNET,
-    "morphological": ROSE,
+    "morphological": CONGAREE,
     "otsu":          HORSESHOE,
-    "ssotsu":        HONEYCOMB,
-    "ca_cfar":       CONGAREE,
-    "go_cfar":       ATLANTIC,
-    "so_cfar":       WARM_GREY,
+    "ca_cfar":       GARNET,
+    "so_cfar":       ROSE,
+    "go_cfar":       HONEYCOMB,
+    "ssotsu":        WARM_GREY,
+    "wavelet":       BLACK_70,
     "os_cfar":       BLACK_50,
 }
 DL_COLOURS = {
-    "yolov11":     BLACK,
-    "rt_detr":     BLACK_70,
-    "faster_rcnn": BLACK_30,
-    "unet":        BLACK_90,
+    "yolov11":     ATLANTIC,
+    "rt_detr":     GRASS,
+    "faster_rcnn": BLACK_90,
+    "unet":        BLACK_50,
 }
 
 METHOD_LABELS = {
-    "wavelet":       "Wavelet-SWT",
-    "morphological": "Morphological",
-    "otsu":          "Otsu",
-    "ssotsu":        "SSOTSU",
-    "ca_cfar":       "CA-CFAR",
-    "go_cfar":       "GO-CFAR",
-    "so_cfar":       "SO-CFAR",
-    "os_cfar":       "OS-CFAR",
     "yolov11":       "YOLOv11",
     "rt_detr":       "RT-DETR",
     "faster_rcnn":   "Faster R-CNN",
     "unet":          "U-Net",
+    "morphological": "Morphological",
+    "otsu":          "Otsu",
+    "ca_cfar":       "CA-CFAR",
+    "so_cfar":       "SO-CFAR",
+    "go_cfar":       "GO-CFAR",
+    "ssotsu":        "SSOTSU",
+    "wavelet":       "Wavelet",
+    "os_cfar":       "OS-CFAR",
 }
-
-CLASSICAL_ORDER = ["wavelet", "morphological", "otsu", "ca_cfar",
-                   "go_cfar", "so_cfar", "ssotsu", "os_cfar"]
-DL_ORDER = ["yolov11", "rt_detr", "faster_rcnn", "unet"]
 
 
 def setup_style() -> None:
-    """Configure matplotlib with the brand typography + clean spines."""
     mpl.rcParams.update({
         "figure.facecolor":     WHITE,
         "axes.facecolor":       WHITE,
@@ -111,546 +110,351 @@ def setup_style() -> None:
         "xtick.major.width":    0.8,
         "ytick.major.width":    0.8,
         "patch.linewidth":      0.6,
-        # No rounded bar corners by default - matplotlib uses sharp by default
     })
 
 
-def load_results() -> pd.DataFrame:
-    df = pd.read_csv("results/evaluation_summary.csv")
+# ── Data loaders ─────────────────────────────────────────────────────────
+def load_unified(path: Path = Path("results/evaluation_summary_v3.csv")) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    df["is_dl"] = df["scope"] == "tile"
+    df["label"] = df["method"].map(METHOD_LABELS)
     return df
 
 
-# ── Figure 1: headline AP@0.50 comparison ────────────────────────────────
+def aggregate_methods(df: pd.DataFrame) -> pd.DataFrame:
+    """One row per method with mean+std over seeds for DL, single value for classical."""
+    out = []
+    for method, grp in df.groupby("method"):
+        is_dl = grp["is_dl"].iloc[0]
+        row = {"method": method,
+               "label": METHOD_LABELS.get(method, method),
+               "is_dl": is_dl,
+               "n_seeds": len(grp)}
+        for k in ["AP@0.50", "AP@0.75", "AP@0.50:0.95", "AR@100", "n_preds"]:
+            row[k + "_mean"] = grp[k].mean()
+            row[k + "_std"]  = grp[k].std() if len(grp) > 1 else 0.0
+        out.append(row)
+    return pd.DataFrame(out)
 
+
+def load_per_dataset(path: Path = Path("results/classical_by_dataset.csv")) -> pd.DataFrame:
+    return pd.read_csv(path)
+
+
+# ── Figure 1: headline ranking ───────────────────────────────────────────
 def fig_headline(df: pd.DataFrame, out_path: Path) -> None:
-    """Dramatic bar chart showing the classical-vs-DL gap at AP@0.50."""
-    # Classical: one row each
-    cls = df[df["type"] == "classical"].copy()
-    cls = cls.sort_values("AP@0.50", ascending=False)
+    agg = aggregate_methods(df).sort_values("AP@0.50_mean", ascending=False)
 
-    # DL: aggregate over seeds
-    dl = df[df["type"] == "dl"].groupby("method").agg(
-        ap_mean=("AP@0.50", "mean"),
-        ap_std=("AP@0.50", "std"),
-    ).reset_index()
-    dl = dl.sort_values("ap_mean", ascending=False)
+    fig, ax = plt.subplots(figsize=(10, 4.8))
+    x = np.arange(len(agg))
+    colors = [DL_COLOURS[m] if is_dl else CLASSICAL_COLOURS[m]
+              for m, is_dl in zip(agg["method"], agg["is_dl"])]
+    bars = ax.bar(x, agg["AP@0.50_mean"], yerr=agg["AP@0.50_std"],
+                  color=colors, edgecolor=BLACK, linewidth=0.5, width=0.75,
+                  capsize=3, error_kw={"ecolor": BLACK, "linewidth": 0.8})
 
-    # Build combined ordered list: classical (desc) then DL (desc)
-    methods = list(cls["method"]) + list(dl["method"])
-    values = list(cls["AP@0.50"]) + list(dl["ap_mean"])
-    errors = [0] * len(cls) + list(dl["ap_std"].fillna(0))
-    is_classical = [True] * len(cls) + [False] * len(dl)
-
-    colors = [CLASSICAL_COLOURS[m] if c else DL_COLOURS[m]
-              for m, c in zip(methods, is_classical)]
-    labels = [METHOD_LABELS[m] for m in methods]
-
-    fig, ax = plt.subplots(figsize=(9, 4.2))
-    x = np.arange(len(methods))
-    bars = ax.bar(x, values, yerr=errors, color=colors, edgecolor=BLACK,
-                  linewidth=0.6, width=0.72, capsize=2.5,
-                  error_kw={"ecolor": BLACK, "linewidth": 0.8})
-
-    # Value labels on top
-    for i, (b, v) in enumerate(zip(bars, values)):
-        txt = f"{v:.4f}" if v < 0.01 else f"{v:.3f}"
-        ax.text(b.get_x() + b.get_width() / 2, v + max(values) * 0.012,
-                txt, ha="center", va="bottom", fontsize=8, color=BLACK)
+    # Value labels
+    for b, v, s in zip(bars, agg["AP@0.50_mean"], agg["AP@0.50_std"]):
+        label = f"{v:.3f}" if v >= 0.01 else f"{v:.4f}"
+        ax.text(b.get_x() + b.get_width() / 2,
+                v + s + agg["AP@0.50_mean"].max() * 0.015,
+                label, ha="center", va="bottom", fontsize=8.5, color=BLACK)
 
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=30, ha="right")
-    ax.set_ylabel("AP@0.50")
-    ax.set_ylim(0, max(values) * 1.20)
+    ax.set_xticklabels([f"{l}*" if is_dl else l
+                         for l, is_dl in zip(agg["label"], agg["is_dl"])],
+                        rotation=30, ha="right")
+    ax.set_ylabel("AP\\@0.50")
+    ax.set_ylim(0, agg["AP@0.50_mean"].max() * 1.18)
+    ax.set_title("Headline Ranking — AP\\@0.50 on DAAN Test")
 
-    # Vertical separator between classical and DL blocks
-    sep = len(cls) - 0.5
-    ax.axvline(sep, color=BLACK_50, linewidth=0.6, linestyle=(0, (3, 3)))
-
-    # Section headers
-    ax.text((len(cls) - 1) / 2, max(values) * 1.14, "Classical",
-            ha="center", va="top", fontsize=10, weight="bold", color=GARNET)
-    ax.text(len(cls) + (len(dl) - 1) / 2, max(values) * 1.14, "Deep Learning",
-            ha="center", va="top", fontsize=10, weight="bold", color=BLACK)
-
-    ax.yaxis.set_minor_locator(AutoMinorLocator(2))
-    ax.tick_params(axis="y", which="minor", color=BLACK_50)
+    # Legend: DL vs classical, plus the asterisk note
+    from matplotlib.patches import Patch
+    legend_el = [
+        Patch(facecolor=ATLANTIC, edgecolor=BLACK, label="Deep learning (tile GT, mean $\\pm 1\\sigma$ / 3 seeds)"),
+        Patch(facecolor=GARNET, edgecolor=BLACK, label="Classical (full-frame GT, deterministic)"),
+    ]
+    ax.legend(handles=legend_el, loc="upper right")
+    ax.text(0.01, 0.97, "$*$ = deep learning (3 seeds)",
+            transform=ax.transAxes, fontsize=8, color=BLACK_70, va="top")
 
     plt.tight_layout()
     fig.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
-# ── Figure 2: multi-metric panel ─────────────────────────────────────────
-
+# ── Figure 2: 4-metric panel ─────────────────────────────────────────────
 def fig_multimetric(df: pd.DataFrame, out_path: Path) -> None:
-    """2x2 grid showing AP@0.50, AP@0.75, AP@0.50:0.95, AR@100."""
+    agg = aggregate_methods(df)
     metrics = [
-        ("AP@0.50",      "AP@0.50"),
-        ("AP@0.75",      "AP@0.75"),
-        ("AP@0.50:0.95", "AP@[0.50:0.95] (COCO mAP)"),
-        ("AR@100",       "AR@100"),
+        ("AP@0.50",      "AP\\@0.50"),
+        ("AP@0.75",      "AP\\@0.75"),
+        ("AP@0.50:0.95", "AP\\@[0.50:0.95]"),
+        ("AR@100",       "AR\\@100"),
     ]
-
-    cls = df[df["type"] == "classical"].copy()
-    dl_agg = df[df["type"] == "dl"].groupby("method").agg(
-        AP_50=("AP@0.50", "mean"), AP_50_std=("AP@0.50", "std"),
-        AP_75=("AP@0.75", "mean"), AP_75_std=("AP@0.75", "std"),
-        AP_50_95=("AP@0.50:0.95", "mean"), AP_50_95_std=("AP@0.50:0.95", "std"),
-        AR_100=("AR@100", "mean"), AR_100_std=("AR@100", "std"),
-    ).reset_index()
-
-    fig, axes = plt.subplots(2, 2, figsize=(10, 6.2))
-
+    fig, axes = plt.subplots(2, 2, figsize=(11, 7))
     for ax, (col, title) in zip(axes.flat, metrics):
-        # Classical
-        cls_sorted = cls.sort_values(col, ascending=False)
-        dl_col_map = {"AP@0.50": "AP_50", "AP@0.75": "AP_75",
-                      "AP@0.50:0.95": "AP_50_95", "AR@100": "AR_100"}
-        dl_std_map = {k: f"{v}_std" for k, v in dl_col_map.items()}
-        dl_sorted = dl_agg.sort_values(dl_col_map[col], ascending=False)
-
-        methods = list(cls_sorted["method"]) + list(dl_sorted["method"])
-        values = list(cls_sorted[col]) + list(dl_sorted[dl_col_map[col]])
-        errs = [0] * len(cls_sorted) + list(dl_sorted[dl_std_map[col]].fillna(0))
-        is_cls = [True] * len(cls_sorted) + [False] * len(dl_sorted)
-        colors = [CLASSICAL_COLOURS[m] if c else DL_COLOURS[m]
-                  for m, c in zip(methods, is_cls)]
-        labels = [METHOD_LABELS[m] for m in methods]
-        x = np.arange(len(methods))
-
-        ax.bar(x, values, yerr=errs, color=colors, edgecolor=BLACK,
-               linewidth=0.5, width=0.75, capsize=2,
+        mean_col = col + "_mean"; std_col = col + "_std"
+        a = agg.sort_values(mean_col, ascending=False)
+        x = np.arange(len(a))
+        colors = [DL_COLOURS[m] if is_dl else CLASSICAL_COLOURS[m]
+                  for m, is_dl in zip(a["method"], a["is_dl"])]
+        ax.bar(x, a[mean_col], yerr=a[std_col], color=colors,
+               edgecolor=BLACK, linewidth=0.5, width=0.75, capsize=2,
                error_kw={"ecolor": BLACK, "linewidth": 0.6})
-
         ax.set_xticks(x)
-        ax.set_xticklabels(labels, rotation=30, ha="right", fontsize=8)
+        ax.set_xticklabels(a["label"], rotation=30, ha="right", fontsize=8)
         ax.set_title(title)
         ax.set_ylabel("Score")
-        ymax = max(values + [1e-4]) * 1.15
+        ymax = max(a[mean_col].max() * 1.15, 0.05)
         ax.set_ylim(0, ymax)
-        ax.axvline(len(cls_sorted) - 0.5, color=BLACK_50,
-                   linewidth=0.5, linestyle=(0, (3, 3)))
 
     plt.tight_layout()
     fig.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
-# ── Figure 3: preprocessing comparison ───────────────────────────────────
+# ── Figure 3: per-dataset classical comparison ───────────────────────────
+def fig_per_dataset(pd_df: pd.DataFrame, out_path: Path) -> None:
+    """Grouped bars: each method gets three bars (DAAN / DARC / MANV)."""
+    methods_order = ["morphological", "otsu", "ca_cfar", "so_cfar",
+                     "go_cfar", "ssotsu", "wavelet"]
+    datasets = ["DAAN", "DARC", "MANV"]
+    ds_colours = [GARNET, ATLANTIC, HORSESHOE]
 
-def load_crop_cfg() -> dict:
-    """Load tuner-configured crop parameters if available."""
-    cfg_path = Path("tools/crop_config.json")
-    if cfg_path.exists():
-        try:
-            with open(cfg_path) as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {"cx": 514, "cy": 508, "radius": 488,
-            "left": 20, "right": 20, "top": 10, "bottom": 10}
+    # Pivot
+    pivot = pd_df.pivot(index="method", columns="dataset",
+                        values="AP@0.50").reindex(methods_order)
+
+    fig, ax = plt.subplots(figsize=(10, 4.8))
+    x = np.arange(len(methods_order))
+    w = 0.27
+    for i, ds in enumerate(datasets):
+        ax.bar(x + (i - 1) * w, pivot[ds], width=w,
+               color=ds_colours[i], edgecolor=BLACK, linewidth=0.5,
+               label=ds)
+        # Value labels
+        for xi, v in zip(x + (i - 1) * w, pivot[ds]):
+            if v >= 0.02:
+                ax.text(xi, v + 0.01, f"{v:.2f}",
+                        ha="center", va="bottom", fontsize=7.5, color=BLACK)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([METHOD_LABELS[m] for m in methods_order],
+                        rotation=30, ha="right")
+    ax.set_ylabel("AP\\@0.50")
+    ax.set_title("Classical Methods: AP\\@0.50 per DLR Sub-dataset")
+    ax.set_ylim(0, 0.9)
+    ax.legend(title="Dataset", loc="upper right")
+
+    plt.tight_layout()
+    fig.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
 
-def fig_preprocess(out_path: Path, img_stem: str = "DAAN_342") -> None:
-    """Raw -> red channel -> masked -> GT overlay.
+# ── Figure 4: DL seed spread (consistency across 3 seeds) ────────────────
+def fig_dl_seeds(df: pd.DataFrame, out_path: Path) -> None:
+    dl = df[df["is_dl"]].copy()
+    methods_order = ["yolov11", "rt_detr", "faster_rcnn"]
+    fig, axes = plt.subplots(1, 3, figsize=(11, 3.8))
+    for ax, m in zip(axes, methods_order):
+        rows = dl[dl["method"] == m].sort_values("seed")
+        if rows.empty: continue
+        keys = ["AP@0.50", "AP@0.75", "AP@0.50:0.95", "AR@100"]
+        x = np.arange(len(keys))
+        colours = [ATLANTIC, ROSE, HONEYCOMB]
+        width = 0.25
+        for i, (_, r) in enumerate(rows.iterrows()):
+            ax.bar(x + (i-1)*width, [r[k] for k in keys], width=width,
+                   color=colours[i], edgecolor=BLACK, linewidth=0.4,
+                   label=f"seed {int(r['seed'])}")
+        ax.set_xticks(x)
+        ax.set_xticklabels(["AP@0.50", "AP@0.75", "AP@[.50:.95]", "AR@100"],
+                            rotation=20, ha="right", fontsize=8)
+        ax.set_title(METHOD_LABELS[m])
+        ax.set_ylim(0, 1)
+        ax.set_ylabel("Score")
+        ax.legend(loc="upper right", fontsize=8)
 
-    Panels retain the full 1050x1024 frame (no rectangular crop) so ground-
-    truth box coordinates are rendered at their real image positions.
-    The circular mask zeros the outside-disc pixels; the display axes clip
-    to the disc bounding box to remove empty corners.
-    """
-    raw_path = Path("data/raw/DAAN/radarImages") / f"{img_stem.split('_')[1]}.png"
-    if not raw_path.exists():
-        raw_path = Path("data/raw/DAAN/radarImages") / "010.png"
+    plt.tight_layout()
+    fig.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
-    raw = cv2.imread(str(raw_path))  # BGR
-    raw_rgb = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
-    red_only = raw[:, :, 2]
-    h, w = red_only.shape
 
-    cfg = load_crop_cfg()
-    cx, cy = int(cfg["cx"]), int(cfg["cy"])
-    r_ppi  = int(cfg["radius"])
+# ── Figure 5: prediction count vs AP (efficiency) ────────────────────────
+def fig_count_vs_ap(df: pd.DataFrame, out_path: Path) -> None:
+    agg = aggregate_methods(df)
 
-    mask = np.zeros((h, w), dtype=np.uint8)
-    cv2.circle(mask, (cx, cy), r_ppi, 255, -1)
-    masked = red_only.copy()
-    masked[mask == 0] = 0
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    for _, r in agg.iterrows():
+        colour = DL_COLOURS[r["method"]] if r["is_dl"] else CLASSICAL_COLOURS[r["method"]]
+        marker = "o" if r["is_dl"] else "s"
+        ax.scatter(r["n_preds_mean"], r["AP@0.50_mean"],
+                   s=180, c=colour, marker=marker, edgecolor=BLACK,
+                   linewidth=0.7, zorder=3, alpha=0.9)
+        ax.annotate(r["label"], (r["n_preds_mean"], r["AP@0.50_mean"]),
+                    xytext=(9, 4), textcoords="offset points",
+                    fontsize=8.5, color=BLACK_90)
 
-    # GT in native full-image coordinates — no offset needed.
-    gt_path = Path("data/processed/annotations/test.json")
-    with open(gt_path) as f:
-        gt_all = json.load(f)
-    fname = f"{img_stem}.png"
-    img_info = next((i for i in gt_all["images"] if i["file_name"] == fname), None)
-    gt_boxes = []
-    if img_info:
-        gt_boxes = [a["bbox"] for a in gt_all["annotations"]
-                    if a["image_id"] == img_info["id"]]
+    # Reference lines: GT count on tile vs full scope
+    ax.axvline(6980, color=GARNET, linewidth=0.8, linestyle=(0, (3, 3)))
+    ax.text(6980*1.05, ax.get_ylim()[1]*0.97, "tile GT = 6,980",
+            color=GARNET, fontsize=8, va="top")
+    ax.axvline(1935, color=ATLANTIC, linewidth=0.8, linestyle=(0, (3, 3)))
+    ax.text(1935*1.05, ax.get_ylim()[1]*0.90, "full-frame GT = 1,935",
+            color=ATLANTIC, fontsize=8, va="top")
 
-    # Display axis limits: just the circle bounding box with a small margin.
-    pad = 8
-    xlim = (max(0, cx - r_ppi - pad), min(w, cx + r_ppi + pad))
-    ylim = (min(h, cy + r_ppi + pad), max(0, cy - r_ppi - pad))  # y inverted
+    ax.set_xscale("log")
+    ax.set_xlabel("Predictions emitted on DAAN test (log scale)")
+    ax.set_ylabel("AP\\@0.50")
+    ax.set_title("Detection Volume vs. Precision")
 
-    fig, axes = plt.subplots(1, 4, figsize=(13, 3.6))
-
-    titles = [
-        "(a) Raw BGR PPI capture",
-        "(b) Red channel only",
-        "(c) + Circular mask",
-        "(d) + DBSCAN ground truth",
+    from matplotlib.lines import Line2D
+    handles = [
+        Line2D([0], [0], marker="o", color="w", markerfacecolor=ATLANTIC,
+               markersize=10, markeredgecolor=BLACK, label="Deep learning"),
+        Line2D([0], [0], marker="s", color="w", markerfacecolor=GARNET,
+               markersize=10, markeredgecolor=BLACK, label="Classical"),
     ]
-    panels = [raw_rgb, red_only, masked, masked]
-
-    for ax, img, t in zip(axes, panels, titles):
-        if img.ndim == 2:
-            ax.imshow(img, cmap="gray", vmin=0, vmax=255)
-        else:
-            ax.imshow(img)
-        ax.set_xlim(*xlim); ax.set_ylim(*ylim)
-        ax.set_aspect("equal")
-        ax.set_title(t, fontsize=10)
-        ax.set_xticks([]); ax.set_yticks([])
-        for spine in ax.spines.values():
-            spine.set_edgecolor(BLACK); spine.set_linewidth(0.7)
-
-    # GT overlay in full-image coordinates (no crop offset).
-    for bx, by, bw, bh in gt_boxes:
-        axes[-1].add_patch(Rectangle((bx, by), bw, bh, linewidth=1.6,
-                                     edgecolor=GARNET, facecolor="none"))
-
+    ax.legend(handles=handles, loc="lower right")
     plt.tight_layout()
     fig.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
-# ── Figure 4: qualitative detection comparison ───────────────────────────
-
+# ── Figure 6: qualitative — existing output samples side-by-side ─────────
 def fig_qualitative(out_path: Path) -> None:
-    """Sample image with GT + top predictions from the four classical methods
-    with non-trivial AP. Every panel is tightly cropped around the PPI disc."""
-    with open("data/processed/annotations/test.json") as f:
-        gt = json.load(f)
-
-    gt_by_img: dict[int, list] = {}
-    for a in gt["annotations"]:
-        gt_by_img.setdefault(a["image_id"], []).append(a)
-
-    # Choose two representative frames with 3–8 targets.
-    chosen: list[dict] = []
-    for img_info in sorted(gt["images"],
-                           key=lambda i: len(gt_by_img.get(i["id"], [])),
-                           reverse=True):
-        n = len(gt_by_img.get(img_info["id"], []))
-        if 3 <= n <= 8:
-            chosen.append(img_info)
-        if len(chosen) >= 2:
-            break
-
-    method_specs = [
-        ("wavelet",       "Wavelet-SWT",   GARNET),
-        ("morphological", "Morphological", ROSE),
-        ("otsu",          "Otsu",          HORSESHOE),
-        ("ca_cfar",       "CA-CFAR",       CONGAREE),
+    """Load the pre-computed output_samples images into a single panel."""
+    sample_files = [
+        "report/output_samples/DL_DAAN_342_tile0001.png",
+        "report/output_samples/classical_DAAN_342.png",
     ]
-    method_preds = {}
-    for m, *_ in method_specs:
-        with open(f"results/classical/{m}_predictions.json") as f:
-            method_preds[m] = json.load(f)
+    imgs = [cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2RGB)
+            for p in sample_files if Path(p).exists()]
+    if len(imgs) < 2:
+        return
 
-    # Same PPI centre/radius as fig_preprocess (from tuner config).
-    cfg = load_crop_cfg()
-    cx, cy = int(cfg["cx"]), int(cfg["cy"])
-    r_ppi  = int(cfg["radius"])
-
-    n_cols = 1 + len(method_specs)
-    fig, axes = plt.subplots(len(chosen), n_cols,
-                             figsize=(2.9 * n_cols, 3.3 * len(chosen)))
-    if len(chosen) == 1:
-        axes = axes[np.newaxis, :]
-
-    # Axis limits = circle bounding box with a small margin. No pixel cropping,
-    # so prediction / GT boxes render in their native full-image coordinates.
-    pad = 8
-
-    for row, img_info in enumerate(chosen):
-        img = cv2.imread(f"data/processed/images/{img_info['file_name']}",
-                         cv2.IMREAD_GRAYSCALE)
-        h, w = img.shape
-        xlim = (max(0, cx - r_ppi - pad), min(w, cx + r_ppi + pad))
-        ylim = (min(h, cy + r_ppi + pad), max(0, cy - r_ppi - pad))
-        gts = gt_by_img.get(img_info["id"], [])
-
-        # GT column
-        ax = axes[row, 0]
-        ax.imshow(img, cmap="gray", vmin=0, vmax=255)
-        for a in gts:
-            bx, by, bw, bh = a["bbox"]
-            ax.add_patch(Rectangle((bx, by), bw, bh, linewidth=1.7,
-                                   edgecolor=GARNET, facecolor="none"))
-        ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_aspect("equal")
-        if row == 0:
-            ax.set_title(f"Ground truth\n({len(gts)} targets)", fontsize=10)
-        else:
-            ax.set_title(f"({len(gts)} targets)", fontsize=10)
-        ax.set_ylabel(img_info["file_name"], fontsize=9)
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6.5))
+    titles = ["(a) DL detectors on a test tile (640×640)",
+              "(b) Classical detectors on a full frame (1050×1024)"]
+    for ax, im, t in zip(axes, imgs, titles):
+        ax.imshow(im)
+        ax.set_title(t, fontsize=10)
         ax.set_xticks([]); ax.set_yticks([])
         for sp in ax.spines.values():
             sp.set_edgecolor(BLACK); sp.set_linewidth(0.7)
 
-        # Method columns
-        for col, (m, label, colour) in enumerate(method_specs, start=1):
-            preds = [p for p in method_preds[m] if p["image_id"] == img_info["id"]]
-            # Skip implausibly large boxes (PPI ring false positives) — GT is ~33x33.
-            preds = [p for p in preds if p["bbox"][2] * p["bbox"][3] < 20000]
-            preds = sorted(preds, key=lambda p: -p.get("score", 0))[:40]
-
-            ax = axes[row, col]
-            ax.imshow(img, cmap="gray", vmin=0, vmax=255)
-            # Faint GT
-            for a in gts:
-                bx, by, bw, bh = a["bbox"]
-                ax.add_patch(Rectangle((bx, by), bw, bh, linewidth=0.9,
-                                       edgecolor=GARNET, facecolor="none",
-                                       linestyle=(0, (2, 2)), alpha=0.7))
-            # Method predictions
-            for p in preds:
-                bx, by, bw, bh = p["bbox"]
-                ax.add_patch(Rectangle((bx, by), bw, bh, linewidth=1.2,
-                                       edgecolor=colour, facecolor="none"))
-            ax.set_xlim(*xlim); ax.set_ylim(*ylim); ax.set_aspect("equal")
-            if row == 0:
-                ax.set_title(f"{label}\n(top-{len(preds)})", fontsize=10)
-            else:
-                ax.set_title(f"(top-{len(preds)})", fontsize=10)
-            ax.set_xticks([]); ax.set_yticks([])
-            for sp in ax.spines.values():
-                sp.set_edgecolor(BLACK); sp.set_linewidth(0.7)
-
     plt.tight_layout()
     fig.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
-# ── Figure 5: detection count vs AP (inefficiency plot) ──────────────────
-
-def fig_count_vs_ap(df: pd.DataFrame, out_path: Path) -> None:
-    """Scatter of (total predictions) vs (AP@0.50), showing over-prediction.
-
-    GT has 2,022 objects in test set; a horizontal line highlights that.
-    """
-    GT_COUNT = 2022
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-
-    for _, row in df.iterrows():
-        m = row["method"]
-        n = row["n_preds"]
-        ap = row["AP@0.50"]
-        if row["type"] == "classical":
-            c = CLASSICAL_COLOURS[m]
-            marker = "s"
-            label = METHOD_LABELS[m] if row["seed"] == "N/A" else None
-        else:
-            c = DL_COLOURS[m]
-            marker = "o"
-            label = None
-
-        if n <= 0 or ap <= 0:
-            # Plot at a floor to keep log scale readable
-            ap_plot = 3e-6
-        else:
-            ap_plot = ap
-        n_plot = max(n, 1)
-
-        ax.scatter(n_plot, ap_plot, s=110, marker=marker, c=c,
-                   edgecolors=BLACK, linewidths=0.6, zorder=4, alpha=0.9)
-
-    # Labels for each method (use classical + DL mean)
-    cls = df[df["type"] == "classical"]
-    for _, r in cls.iterrows():
-        m = r["method"]; n = r["n_preds"]; ap = r["AP@0.50"]
-        if ap <= 0:
-            continue
-        ax.annotate(METHOD_LABELS[m], (n, ap), xytext=(8, 4),
-                    textcoords="offset points", fontsize=8, color=BLACK)
-
-    dl_agg = df[df["type"] == "dl"].groupby("method").agg(
-        ap=("AP@0.50", "mean"), n=("n_preds", "mean")).reset_index()
-    for _, r in dl_agg.iterrows():
-        m = r["method"]; n = r["n"]; ap = r["ap"]
-        ap_plot = max(ap, 3e-6)
-        ax.annotate(METHOD_LABELS[m] + " (mean)", (n, ap_plot),
-                    xytext=(8, 4), textcoords="offset points", fontsize=8,
-                    color=BLACK_70, fontstyle="italic")
-
-    ax.axvline(GT_COUNT, color=GARNET, linewidth=1.0, linestyle="--")
-    ax.text(GT_COUNT * 1.05, ax.get_ylim()[1] if ax.get_ylim()[1] > 0 else 0.1,
-            f"Ground-truth = {GT_COUNT}", color=GARNET, fontsize=9,
-            rotation=90, va="top", ha="left")
-
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.set_xlabel("Total predictions on test set (log)")
-    ax.set_ylabel("AP@0.50 (log)")
-    ax.set_title("Detection Volume vs. Precision")
-
-    # Legend
-    from matplotlib.lines import Line2D
-    handles = [
-        Line2D([0], [0], marker="s", color="w", markerfacecolor=GARNET,
-               markersize=9, markeredgecolor=BLACK, label="Classical"),
-        Line2D([0], [0], marker="o", color="w", markerfacecolor=BLACK,
-               markersize=9, markeredgecolor=BLACK, label="Deep Learning"),
+# ── Figure 7: preprocessing pipeline (from earlier — regenerate) ─────────
+def fig_preprocess(out_path: Path) -> None:
+    from src.data.radar_mask import (DATASET_CALIBRATION, create_radar_mask,
+                                      DEFAULT_CENTER_X, DEFAULT_CENTER_Y,
+                                      DEFAULT_RADIUS)
+    # Four panels: one from each of the three datasets + GT overlay on DAAN
+    frames = [
+        ("DAAN", "342.png", "(a) DAAN — long-range (12 m/px)"),
+        ("DARC", "100.png", "(b) DARC — long-range (12 m/px)"),
+        ("MANV", "250.png", "(c) MANV — close-range (6 m/px)"),
     ]
-    ax.legend(handles=handles, loc="lower left")
+    mask = create_radar_mask(1024, 1050)
 
-    plt.tight_layout()
-    fig.savefig(out_path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
+    fig, axes = plt.subplots(1, 4, figsize=(14, 4))
 
+    from src.data.ais_anchored_gt import process_frame
+    # Render the three datasets + GT overlay on DAAN
+    for i, (ds, fname, title) in enumerate(frames):
+        path = Path(f"data/raw/{ds}/radarImages/{fname}")
+        if not path.exists():
+            continue
+        bgr = cv2.imread(str(path))
+        from src.data.radar_mask import extract_radar_signal
+        sig = extract_radar_signal(bgr, dataset=ds)
+        sig = cv2.bitwise_and(sig, mask)
 
-# ── Figure 6: prediction box-size distribution ───────────────────────────
+        ax = axes[i]
+        ax.imshow(sig, cmap="gray", vmin=0, vmax=255)
+        ax.set_title(title, fontsize=10)
+        ax.set_xlim(20, 1030)
+        ax.set_ylim(1004, 26)
+        ax.set_xticks([]); ax.set_yticks([])
+        for sp in ax.spines.values():
+            sp.set_edgecolor(BLACK); sp.set_linewidth(0.7)
 
-def fig_box_sizes(out_path: Path) -> None:
-    """Overlay of GT vs per-method predicted box-area histograms."""
+    # Panel (d): DAAN with GT
+    ax = axes[3]
+    bgr = cv2.imread("data/raw/DAAN/radarImages/342.png")
+    from src.data.radar_mask import extract_radar_signal
+    sig = cv2.bitwise_and(extract_radar_signal(bgr, dataset="DAAN"), mask)
+    ax.imshow(sig, cmap="gray", vmin=0, vmax=255)
+
     with open("data/processed/annotations/test.json") as f:
         gt = json.load(f)
-    gt_areas = np.array([a["bbox"][2] * a["bbox"][3] for a in gt["annotations"]])
-
-    fig, ax = plt.subplots(figsize=(8.5, 4.5))
-
-    bins = np.logspace(0.5, 6, 42)
-
-    ax.hist(gt_areas, bins=bins, alpha=0.45, color=GARNET,
-            edgecolor=BLACK, linewidth=0.5, label="Ground truth")
-
-    method_files = [
-        ("wavelet", "results/classical/wavelet_predictions.json", ATLANTIC,
-         "Wavelet-SWT"),
-        ("ca_cfar", "results/classical/ca_cfar_predictions.json", CONGAREE,
-         "CA-CFAR"),
-        ("morphological", "results/classical/morphological_predictions.json",
-         HORSESHOE, "Morphological"),
-    ]
-    for _m, path, colour, label in method_files:
-        with open(path) as f:
-            preds = json.load(f)
-        areas = np.array([p["bbox"][2] * p["bbox"][3] for p in preds])
-        if len(areas) == 0:
-            continue
-        ax.hist(areas, bins=bins, histtype="step", linewidth=1.5,
-                edgecolor=colour, label=label)
-
-    ax.set_xscale("log")
-    ax.set_xlabel("Bounding box area (pixels, log)")
-    ax.set_ylabel("Count")
-    ax.set_title("Distribution of Bounding Box Areas")
-    ax.legend(loc="upper right")
+    img_info = next((im for im in gt["images"] if im["file_name"] == "DAAN_342.png"), None)
+    if img_info:
+        for a in gt["annotations"]:
+            if a["image_id"] != img_info["id"]: continue
+            x, y, w, h = a["bbox"]
+            ax.add_patch(Rectangle((x, y), w, h, linewidth=1.6,
+                                    edgecolor=GARNET, facecolor="none"))
+    ax.set_title("(d) + AIS-anchored GT overlay", fontsize=10)
+    ax.set_xlim(20, 1030); ax.set_ylim(1004, 26)
+    ax.set_xticks([]); ax.set_yticks([])
+    for sp in ax.spines.values():
+        sp.set_edgecolor(BLACK); sp.set_linewidth(0.7)
 
     plt.tight_layout()
     fig.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
-# ── Figure 7: classical vs DL summary boxplot ────────────────────────────
-
-def fig_classical_vs_dl(df: pd.DataFrame, out_path: Path) -> None:
-    """Paired boxplots summarising classical vs DL across metrics."""
-    metrics = [("AP@0.50", "AP@0.50"),
-               ("AP@0.50:0.95", "AP@[0.50:0.95]"),
-               ("AR@100", "AR@100")]
-
-    fig, axes = plt.subplots(1, 3, figsize=(11, 4))
-
-    for ax, (col, title) in zip(axes, metrics):
-        cls_vals = df[df["type"] == "classical"][col].values
-        dl_vals = df[df["type"] == "dl"][col].values
-
-        data = [cls_vals, dl_vals]
-
-        bplot = ax.boxplot(data, labels=["Classical", "Deep Learning"],
-                           widths=0.55, patch_artist=True, showmeans=True,
-                           meanprops={"marker": "D", "markerfacecolor": BLACK,
-                                      "markeredgecolor": BLACK, "markersize": 6},
-                           medianprops={"color": BLACK, "linewidth": 1.4},
-                           whiskerprops={"color": BLACK, "linewidth": 0.8},
-                           capprops={"color": BLACK, "linewidth": 0.8},
-                           flierprops={"marker": "x", "markerfacecolor": BLACK_50,
-                                       "markeredgecolor": BLACK_50})
-        for patch, colour in zip(bplot["boxes"], [GARNET, BLACK_70]):
-            patch.set_facecolor(colour); patch.set_alpha(0.35)
-            patch.set_edgecolor(BLACK); patch.set_linewidth(0.7)
-
-        # Overlay individual points
-        for i, vals in enumerate(data):
-            xs = np.random.default_rng(0).normal(i + 1, 0.04, size=len(vals))
-            colour = GARNET if i == 0 else BLACK_70
-            ax.scatter(xs, vals, color=colour, alpha=0.8, s=20,
-                       edgecolors=BLACK, linewidths=0.4, zorder=3)
-
-        ax.set_title(title)
-        ax.set_ylabel("Score")
-
-    plt.tight_layout()
-    fig.savefig(out_path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-
-
-# ── Figure 8: Dataset composition pie + sample counts ────────────────────
-
+# ── Figure 8: dataset composition ────────────────────────────────────────
 def fig_dataset(out_path: Path) -> None:
-    with open("data/processed/annotations/train.json") as f:
-        train = json.load(f)
-    with open("data/processed/annotations/val.json") as f:
-        val = json.load(f)
-    with open("data/processed/annotations/test.json") as f:
-        test = json.load(f)
+    splits = [("Train (MANV)", "train.json", HORSESHOE),
+              ("Val (DARC)",   "val.json",   ATLANTIC),
+              ("Test (DAAN)",  "test.json",  GARNET)]
 
-    sets = [("Train (MANV)", train, HORSESHOE),
-            ("Val (DARC)",   val,   ATLANTIC),
-            ("Test (DAAN)",  test,  GARNET)]
-
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-
-    # Panel A: images per split
-    names = [s[0] for s in sets]
-    img_counts = [len(s[1]["images"]) for s in sets]
-    ann_counts = [len(s[1]["annotations"]) for s in sets]
-    colours = [s[2] for s in sets]
-
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4))
+    # Left: counts
     ax = axes[0]
+    names, imgs, anns, cols = [], [], [], []
+    for label, fname, col in splits:
+        with open(f"data/processed/annotations/{fname}") as f:
+            j = json.load(f)
+        names.append(label); imgs.append(len(j["images"]))
+        anns.append(len(j["annotations"])); cols.append(col)
+
     x = np.arange(len(names))
-    w = 0.35
-    b1 = ax.bar(x - w / 2, img_counts, width=w, color=colours,
-                edgecolor=BLACK, linewidth=0.5, label="Images")
-    b2 = ax.bar(x + w / 2, ann_counts, width=w, color=[BLACK_70] * 3,
-                edgecolor=BLACK, linewidth=0.5, label="Annotations")
-    for rect, v in list(zip(b1, img_counts)) + list(zip(b2, ann_counts)):
-        ax.text(rect.get_x() + rect.get_width() / 2, v + 80,
-                f"{v}", ha="center", va="bottom", fontsize=8)
-    ax.set_xticks(x); ax.set_xticklabels(names, fontsize=9)
+    w = 0.38
+    b1 = ax.bar(x - w/2, imgs, width=w, color=cols, edgecolor=BLACK,
+                 linewidth=0.5, label="Images")
+    b2 = ax.bar(x + w/2, anns, width=w, color=[BLACK_70]*3, edgecolor=BLACK,
+                 linewidth=0.5, label="Annotations")
+    for b, v in zip(list(b1) + list(b2), imgs + anns):
+        ax.text(b.get_x() + b.get_width()/2, v + 80, f"{v:,}",
+                ha="center", va="bottom", fontsize=8)
+    ax.set_xticks(x); ax.set_xticklabels(names)
     ax.set_ylabel("Count")
-    ax.set_title("Dataset split sizes")
+    ax.set_title("Split sizes (clean AIS-anchored GT)")
     ax.legend(loc="upper right")
 
-    # Panel B: number of objects per image (test set distribution)
-    per_img = {}
-    for a in test["annotations"]:
-        per_img[a["image_id"]] = per_img.get(a["image_id"], 0) + 1
-    vals = list(per_img.values())
-    # Images with zero objects
-    n_zero = len(test["images"]) - len(per_img)
-    all_vals = vals + [0] * n_zero
-
+    # Right: target density on DAAN test
     ax = axes[1]
-    bins = np.arange(0, max(all_vals) + 2) - 0.5
-    ax.hist(all_vals, bins=bins, color=GARNET, edgecolor=BLACK,
-            linewidth=0.5, alpha=0.85)
-    ax.set_xlabel("Objects per image (test set)")
+    with open("data/processed/annotations/test.json") as f:
+        gt = json.load(f)
+    per_img = {}
+    for a in gt["annotations"]:
+        per_img[a["image_id"]] = per_img.get(a["image_id"], 0) + 1
+    all_counts = list(per_img.values()) + [0] * (len(gt["images"]) - len(per_img))
+    bins = np.arange(0, max(all_counts) + 2) - 0.5
+    ax.hist(all_counts, bins=bins, color=GARNET, edgecolor=BLACK,
+             linewidth=0.5, alpha=0.85)
+    ax.set_xlabel("Objects per image (DAAN test)")
     ax.set_ylabel("Number of images")
-    ax.set_title("Target density distribution")
+    ax.set_title("Target density")
 
     plt.tight_layout()
     fig.savefig(out_path, dpi=300, bbox_inches="tight")
@@ -658,34 +462,34 @@ def fig_dataset(out_path: Path) -> None:
 
 
 # ── Main driver ──────────────────────────────────────────────────────────
-
 def main() -> None:
     setup_style()
     out = Path("report/figures")
     out.mkdir(parents=True, exist_ok=True)
 
-    df = load_results()
+    df_unified = load_unified()
+    df_perds   = load_per_dataset()
 
-    print("Rendering Figure 1: headline AP comparison")
-    fig_headline(df, out / "fig1_headline.png")
+    print("Rendering Figure 1: headline ranking")
+    fig_headline(df_unified, out / "fig1_headline.png")
 
-    print("Rendering Figure 2: multi-metric panel")
-    fig_multimetric(df, out / "fig2_multimetric.png")
+    print("Rendering Figure 2: 4-metric panel")
+    fig_multimetric(df_unified, out / "fig2_multimetric.png")
 
-    print("Rendering Figure 3: preprocessing pipeline")
-    fig_preprocess(out / "fig3_preprocess.png", img_stem="DAAN_342")
+    print("Rendering Figure 3: per-dataset classical")
+    fig_per_dataset(df_perds, out / "fig3_per_dataset.png")
 
-    print("Rendering Figure 4: qualitative detection comparison")
-    fig_qualitative(out / "fig4_qualitative.png")
+    print("Rendering Figure 4: DL seed spread")
+    fig_dl_seeds(df_unified, out / "fig4_dl_seeds.png")
 
-    print("Rendering Figure 5: detection-count vs AP")
-    fig_count_vs_ap(df, out / "fig5_count_vs_ap.png")
+    print("Rendering Figure 5: detection volume vs AP")
+    fig_count_vs_ap(df_unified, out / "fig5_count_vs_ap.png")
 
-    print("Rendering Figure 6: bounding-box area distributions")
-    fig_box_sizes(out / "fig6_boxsizes.png")
+    print("Rendering Figure 6: qualitative samples")
+    fig_qualitative(out / "fig6_qualitative.png")
 
-    print("Rendering Figure 7: classical vs DL boxplots")
-    fig_classical_vs_dl(df, out / "fig7_classical_vs_dl.png")
+    print("Rendering Figure 7: preprocessing pipeline")
+    fig_preprocess(out / "fig7_preprocess.png")
 
     print("Rendering Figure 8: dataset composition")
     fig_dataset(out / "fig8_dataset.png")

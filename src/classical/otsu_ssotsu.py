@@ -6,9 +6,11 @@ from skimage.filters import threshold_otsu
 
 from .utils import binary_mask_to_bboxes, binary_mask_to_bboxes_with_scores
 
-# Default dilation and padding to match GT box scale (~33x33 from 12px padding)
-DEFAULT_DILATION = 5
-DEFAULT_BOX_PADDING = 12
+# The new image-grounded GT uses tight blob bounding boxes (no synthetic
+# padding), so classical outputs should also emit tight boxes without
+# dilation/padding to match IoU at 0.50.
+DEFAULT_DILATION = 0
+DEFAULT_BOX_PADDING = 0
 
 
 def detect_otsu(

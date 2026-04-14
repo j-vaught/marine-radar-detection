@@ -14,8 +14,9 @@ def detect_wavelet(
     subbands: list[str] | None = None,
     combine_mode: str = "max",
     min_area: int = 15,
-    dilation: int = 5,
-    box_padding: int = 12,
+    max_area: int = 50000,
+    dilation: int = 0,
+    box_padding: int = 0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Detect targets using 2D stationary wavelet transform.
 
@@ -96,11 +97,12 @@ def detect_wavelet(
         coeff_norm = coeff_magnitude
 
     _, scores = binary_mask_to_bboxes_with_scores(
-        detection_map, coeff_norm, threshold_map=None, min_area=min_area,
+        detection_map, coeff_norm, threshold_map=None,
+        min_area=min_area, max_area=max_area,
         dilation=dilation, box_padding=box_padding,
     )
     bboxes = binary_mask_to_bboxes(
-        detection_map, min_area=min_area,
+        detection_map, min_area=min_area, max_area=max_area,
         dilation=dilation, box_padding=box_padding,
     )
     return bboxes, detection_map, scores

@@ -38,18 +38,25 @@ class RadarDetectionDataset(Dataset):
 
         boxes = np.array(ann["boxes"], dtype=np.float32)
         labels = np.array(ann["labels"], dtype=np.int64)
+        # torchvision Faster R-CNN requires boxes of shape (N, 4) even when N=0
+        if boxes.size == 0:
+            boxes = np.zeros((0, 4), dtype=np.float32)
+            labels = np.zeros((0,), dtype=np.int64)
 
         if self.transforms:
             transformed = self.transforms(image=image, bboxes=boxes, labels=labels)
             image = transformed["image"]
             boxes = np.array(transformed["bboxes"], dtype=np.float32)
             labels = np.array(transformed["labels"], dtype=np.int64)
+            if boxes.size == 0:
+                boxes = np.zeros((0, 4), dtype=np.float32)
+                labels = np.zeros((0,), dtype=np.int64)
 
         # Convert to tensors
         image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
 
         target = {
-            "boxes": torch.as_tensor(boxes, dtype=torch.float32),
+            "boxes": torch.as_tensor(boxes, dtype=torch.float32).reshape(-1, 4),
             "labels": torch.as_tensor(labels, dtype=torch.int64),
         }
 

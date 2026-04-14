@@ -88,6 +88,7 @@ def run_method(method_name, image, configs):
             subbands=cfg["subbands"],
             combine_mode=cfg["combine_mode"],
             min_area=cfg["min_area"],
+            max_area=cfg.get("max_area", 50000),
         )
     elif method_name == "otsu":
         cfg = configs["otsu"]["otsu"]
