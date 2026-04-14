@@ -53,23 +53,25 @@
 
 #set par(justify: true, leading: 0.55em, first-line-indent: 0pt)
 
-// Heading styles – garnet accents, no rounded edges anywhere
+// Heading styles – garnet accents, no rounded edges anywhere.
+// Tighter vertical rhythm: the garnet rule sits snug under the H1 title
+// text, H2/H3 hug the following paragraph.
 #show heading.where(level: 1): it => {
   set text(fill: garnet, size: 12pt, weight: "bold")
-  set block(above: 1.4em, below: 0.6em)
+  set block(above: 1.15em, below: 0.45em)
   block[
     #smallcaps(it.body)
-    #v(-0.35em)
+    #v(2pt)
     #line(length: 100%, stroke: 0.8pt + garnet)
   ]
 }
 #show heading.where(level: 2): it => {
   set text(fill: black-90, size: 10.5pt, weight: "bold")
-  block(above: 1.0em, below: 0.4em)[#it.body]
+  block(above: 0.85em, below: 0.25em)[#it.body]
 }
 #show heading.where(level: 3): it => {
   set text(fill: black-90, size: 10pt, weight: "bold", style: "italic")
-  block(above: 0.8em, below: 0.2em)[#it.body]
+  block(above: 0.65em, below: 0.1em)[#it.body]
 }
 
 // Link / ref styling
