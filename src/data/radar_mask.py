@@ -1,7 +1,69 @@
-"""Radar PPI circular mask to exclude UI elements from detection."""
+"""Radar PPI circular mask + dataset-aware signal extraction."""
+
+from __future__ import annotations
 
 import cv2
 import numpy as np
+
+
+# ── Per-dataset target-signal extraction ─────────────────────────────
+# The DLR captures have two distinct display palettes:
+#
+#   DAAN / DARC — solid blue PPI background (BGR ≈ (140, 0, 0)),
+#       near-white radar returns (234, 239, 226) and GREEN bearing marks
+#       (0, 255, 0).  Taking the red channel isolates the returns because
+#       the background has R≈0, the green UI has R=0, and only the near-
+#       white targets hit high R.
+#
+#   MANV — dark-blue near-black background (35, 1, 0), YELLOW radar
+#       returns (hue ≈ 30° in OpenCV), and WHITE/GRAY UI chrome (255, 255,
+#       255).  The red channel is useless here because white UI has R=255
+#       too.  Yellow is distinguished from white only by *saturation*, so
+#       we use an HSV hue + saturation filter.
+#
+# ``extract_radar_signal`` dispatches by dataset name; callers should pass
+# the uppercase sub-dataset tag (DAAN, DARC, MANV).
+
+
+def extract_via_red_channel(bgr: np.ndarray) -> np.ndarray:
+    """DAAN / DARC: the red channel is the cleanest target signal."""
+    return bgr[:, :, 2]
+
+
+def extract_via_yellow_hsv(
+    bgr: np.ndarray,
+    hue_lo: int = 15,
+    hue_hi: int = 50,
+    sat_min: int = 80,
+    val_min: int = 100,
+) -> np.ndarray:
+    """MANV: keep only yellow-hued, saturated pixels.  Pure white UI has
+    near-zero saturation and is dropped automatically.
+
+    Returns a uint8 grey-scale image whose value is the HSV *V* at the
+    kept pixels and 0 elsewhere, so downstream CFAR / CC code treats it
+    identically to the red-channel output from DAAN/DARC.
+    """
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv)
+    mask = (h >= hue_lo) & (h <= hue_hi) & (s >= sat_min) & (v >= val_min)
+    return np.where(mask, v, 0).astype(np.uint8)
+
+
+_EXTRACTORS = {
+    "DAAN": extract_via_red_channel,
+    "DARC": extract_via_red_channel,
+    "MANV": extract_via_yellow_hsv,
+}
+
+
+def extract_radar_signal(bgr: np.ndarray, dataset: str | None = None) -> np.ndarray:
+    """Apply the per-dataset target-isolation strategy.
+
+    Unknown datasets fall back to the red-channel extractor.
+    """
+    fn = _EXTRACTORS.get((dataset or "").upper(), extract_via_red_channel)
+    return fn(bgr)
 
 
 # Default radar circle parameters (measured directly from DLR PPI captures

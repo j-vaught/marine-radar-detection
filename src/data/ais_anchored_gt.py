@@ -39,6 +39,7 @@ from .radar_mask import (
     DEFAULT_CENTER_Y,
     DEFAULT_RADIUS,
     create_radar_mask,
+    extract_radar_signal,
 )
 
 
@@ -230,19 +231,24 @@ def extract_blobs(
     closing_kernel: tuple[int, int] = CLOSING_KERNEL,
     min_area: int = MIN_BLOB_AREA,
     max_area: int = MAX_BLOB_AREA,
+    dataset: str | None = None,
 ) -> list[Blob]:
-    """Detect bright connected-component blobs inside the PPI disc."""
-    # Red channel = radar return intensity
-    red = bgr_image[:, :, 2]
+    """Detect bright connected-component blobs inside the PPI disc.
+
+    ``dataset`` (DAAN / DARC / MANV) selects the colour-isolation strategy
+    via ``extract_radar_signal`` — DAAN and DARC use the red channel,
+    MANV uses a yellow-hue HSV filter that rejects white UI chrome.
+    """
+    signal = extract_radar_signal(bgr_image, dataset=dataset)
 
     # Apply the circular mask so we ignore UI chrome and outside-disc pixels
     if radar_mask is None:
-        h, w = red.shape
+        h, w = signal.shape
         radar_mask = create_radar_mask(h, w)
-    red_masked = cv2.bitwise_and(red, radar_mask)
+    signal_masked = cv2.bitwise_and(signal, radar_mask)
 
     # Binary threshold
-    binary = (red_masked > threshold).astype(np.uint8)
+    binary = (signal_masked > threshold).astype(np.uint8)
 
     # Morphological closing to bridge single-vessel fragmentation
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, closing_kernel)
@@ -257,7 +263,7 @@ def extract_blobs(
         x, y, w, h, area = stats[lbl]
         if area < min_area or area > max_area:
             continue
-        peak = int(red_masked[labels == lbl].max())
+        peak = int(signal_masked[labels == lbl].max())
         cx, cy = centroids[lbl]
         blobs.append(Blob(cx=float(cx), cy=float(cy),
                           x1=int(x), y1=int(y),
@@ -303,10 +309,12 @@ def process_frame(
     bgr_image: np.ndarray,
     frame_entry: list | None,
     radar_mask: np.ndarray | None = None,
+    dataset: str | None = None,
     **kwargs,
 ) -> MatchResult:
     """End-to-end: parse a frame's polar annotations, split each AIS record
-    into per-target seeds, extract bright blobs, greedy-match and return."""
+    into per-target seeds, extract bright blobs (dataset-aware colour
+    isolation), greedy-match and return."""
     objects = parse_frame_annotations(frame_entry or [])
     seeds = split_ais_to_seeds(
         objects,
@@ -314,7 +322,7 @@ def process_frame(
         min_samples=kwargs.get("polar_min_samples", POLAR_DBSCAN_MIN_SAMPLE),
     )
     blobs = extract_blobs(
-        bgr_image, radar_mask=radar_mask,
+        bgr_image, radar_mask=radar_mask, dataset=dataset,
         **{k: v for k, v in kwargs.items()
            if k in {"threshold", "closing_kernel", "min_area", "max_area"}},
     )
@@ -366,7 +374,8 @@ def convert_dataset(
         if frame_entry is None:
             continue
 
-        result = process_frame(bgr, frame_entry, radar_mask=radar_mask, **kwargs)
+        result = process_frame(bgr, frame_entry, radar_mask=radar_mask,
+                               dataset=dataset_name, **kwargs)
 
         out_fname = f"{dataset_name}_{fname}"
         coco["images"].append({
