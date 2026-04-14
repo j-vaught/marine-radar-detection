@@ -43,6 +43,7 @@ from .radar_mask import (
     POLAR_RADIUS_PX,
     create_radar_mask,
     extract_radar_signal,
+    get_calibration,
 )
 
 
@@ -60,14 +61,15 @@ MAX_RANGE_M         = 6000.0    # DLR PPI display range (all three sub-sets)
 POLAR_DBSCAN_EPS_M      = 200.0
 POLAR_DBSCAN_MIN_SAMPLE = 5
 
-# Per-dataset match radius. After the polar-origin calibration fix,
-# DAAN/DARC seeds land within 10–15 px of their blobs, so 30 is tight.
-# MANV has genuine per-frame AIS timestamp drift (mean 67 px, std 45) so
-# a looser value is needed to recover any GT at all.
+# Per-dataset match radius. After discovering and fixing the MANV range-
+# scale bug (MANV uses 6 m/px vs. 11 m/px for DAAN/DARC per Boettcher &
+# Eichler 2021), all three sub-datasets reach median AIS-to-blob offsets
+# of 5–7 px. A 20-px radius is now tight enough to reject wrong matches
+# in every dataset.
 DATASET_MATCH_RADIUS = {
-    "DAAN": 30,
-    "DARC": 30,
-    "MANV": 60,
+    "DAAN": 20,
+    "DARC": 20,
+    "MANV": 20,
 }
 
 
@@ -326,13 +328,19 @@ def process_frame(
     **kwargs,
 ) -> MatchResult:
     """End-to-end: parse a frame's polar annotations, split each AIS record
-    into per-target seeds, extract bright blobs (dataset-aware colour
-    isolation), greedy-match and return."""
+    into per-target seeds (using per-dataset polar calibration), extract
+    bright blobs (with per-dataset colour isolation), greedy-match and
+    return the match result."""
     objects = parse_frame_annotations(frame_entry or [])
+    # Per-dataset polar calibration (antenna origin + display range)
+    cal = get_calibration(dataset)
     seeds = split_ais_to_seeds(
         objects,
         eps_m=kwargs.get("polar_eps_m", POLAR_DBSCAN_EPS_M),
         min_samples=kwargs.get("polar_min_samples", POLAR_DBSCAN_MIN_SAMPLE),
+        cx=cal["cx"], cy=cal["cy"],
+        r_px_max=cal["r_px_max"],
+        max_range_m=cal["max_range_m"],
     )
     blobs = extract_blobs(
         bgr_image, radar_mask=radar_mask, dataset=dataset,

@@ -72,16 +72,52 @@ DEFAULT_CENTER_X = 531
 DEFAULT_CENTER_Y = 515
 DEFAULT_RADIUS   = 466
 
-# --- Polar-coordinate origin (used to project AIS (r, theta) to pixels) ----
-# The radar antenna reference point is NOT the visual PPI centre.  A 2-D
-# grid search against image-blob positions across DAAN and DARC (which have
-# clean AIS-to-radar registration) shows the polar origin sits ~17 pixels
-# to the left and ~3 pixels up of the visual centre.  Using (531, 515) for
-# projection produces a systematic ~17 px AIS-seed misalignment; using the
-# values below brings median per-seed offset below 14 px on DAAN/DARC.
+# --- Default polar-coordinate origin (fallback for unknown datasets) ----
+# Real DLR captures have per-dataset calibration (see DATASET_CALIBRATION
+# below).  These defaults are approximately the DAAN values.
 POLAR_ORIGIN_X   = 514
-POLAR_ORIGIN_Y   = 512
+POLAR_ORIGIN_Y   = 516
 POLAR_RADIUS_PX  = 466   # display radius in pixels used for r scaling
+
+
+# --- Per-dataset calibration ---------------------------------------------
+# The DLR radar campaigns (Boettcher & Eichler, 2021 — MDPI Sensors) used
+# different radar range settings per sub-dataset:
+#
+#   DAAN, DARC : "coarser 11 m resolution"  (long range, open water)
+#   MANV       : "finer resolution of 6 m"  (close-range manoeuvres)
+#
+# A 2-D grid search against per-frame image-blob positions confirms this
+# and additionally reveals that each sub-dataset has a slightly different
+# polar-origin pixel offset (the antenna reference was mounted differently
+# on each recording platform).  Using these values per-dataset brings the
+# median AIS-seed → nearest-blob distance down from ~67 px (MANV) and
+# ~22 px (DAAN/DARC) to around 5–7 px.
+#
+# Fields:
+#   cx, cy       — polar origin in pixels (where AIS (r=0) projects to)
+#   r_px_max     — display radius in pixels (visual PPI circle)
+#   max_range_m  — physical range in metres at r_px_max
+#   resolution   — m/pixel = max_range_m / r_px_max  (recorded for sanity)
+
+DATASET_CALIBRATION: dict[str, dict] = {
+    "DAAN": {"cx": 512, "cy": 516, "r_px_max": 466,
+              "max_range_m": 5750, "resolution": 12.34},
+    "DARC": {"cx": 514, "cy": 521, "r_px_max": 466,
+              "max_range_m": 5600, "resolution": 12.02},
+    "MANV": {"cx": 514, "cy": 528, "r_px_max": 466,
+              "max_range_m": 2800, "resolution": 6.01},
+}
+
+
+def get_calibration(dataset: str | None) -> dict:
+    """Return per-dataset calibration or a safe DAAN-like default."""
+    if dataset is None:
+        return {"cx": POLAR_ORIGIN_X, "cy": POLAR_ORIGIN_Y,
+                "r_px_max": POLAR_RADIUS_PX, "max_range_m": 5750,
+                "resolution": 12.34}
+    return DATASET_CALIBRATION.get(dataset.upper(),
+                                   DATASET_CALIBRATION["DAAN"])
 
 
 def create_radar_mask(
