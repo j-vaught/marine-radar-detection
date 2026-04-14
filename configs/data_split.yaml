@@ -53,10 +53,13 @@ dlr:
   blob_max_area: 8000       # reject outer-ring / land responses (pixels^2)
 
   # Greedy AIS seed → blob matching radius (pixels).
-  # 60 chosen empirically: DAAN/DARC match almost everything at 30, but MANV
-  # (harbour scene) shows a systematic 44–66 px AIS→radar offset. 60 recovers
-  # most of MANV without starting to fuse neighbouring harbour vessels.
-  match_radius_px: 60
+  # After fixing the 17 px polar-origin calibration bug, DAAN/DARC AIS seeds
+  # land within 10–15 px of the true radar blob (~88% within 20 px, ~97%
+  # within 30 px). MANV has per-frame AIS-radar timing drift
+  # (mean 67 px, std ~45 px) that no static calibration can fix, so we
+  # prefer CORRECT GT on DAAN/DARC over inflated GT on MANV — match_radius
+  # 30 keeps only confident matches.
+  match_radius_px: 30
 
   # Include bright blobs with no AIS match as category 2 "unlabelled"?
   include_unclaimed: false

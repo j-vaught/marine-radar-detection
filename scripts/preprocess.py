@@ -97,6 +97,8 @@ def process_dlr(raw_dir: Path, output_dir: Path, cfg: dict, apply_clahe_flag: bo
         return {"images": [], "annotations": [], "categories": [{"id": 1, "name": "vessel"}]}
 
     print(f"Processing DLR datasets: {available}")
+    # Note: match_radius is NOT passed here — convert_dataset now uses the
+    # per-dataset DATASET_MATCH_RADIUS table (DAAN/DARC = 30, MANV = 60).
     merged_coco = convert_all_datasets(
         str(raw_dir),
         datasets=available,
@@ -105,7 +107,6 @@ def process_dlr(raw_dir: Path, output_dir: Path, cfg: dict, apply_clahe_flag: bo
         threshold=dlr_cfg.get("blob_threshold", 25),
         min_area=dlr_cfg.get("blob_min_area", 10),
         max_area=dlr_cfg.get("blob_max_area", 8000),
-        match_radius=dlr_cfg.get("match_radius_px", 30),
         include_unclaimed=dlr_cfg.get("include_unclaimed", False),
     )
 

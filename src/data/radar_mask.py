@@ -66,16 +66,22 @@ def extract_radar_signal(bgr: np.ndarray, dataset: str | None = None) -> np.ndar
     return fn(bgr)
 
 
-# Default radar circle parameters (measured directly from DLR PPI captures
-# via the interactive crop tuner).  Note that ``polar_to_pixel`` in
-# ``polar_to_coco.py`` uses the naive image-centred formula
-# ``(min(W, H) / 2) * 0.92`` which gives (525, 512, 471); the measured display
-# is offset a few pixels to the lower-right, so GT bounding boxes produced by
-# that formula sit a few pixels off the real radar returns. Using the measured
-# values here ensures the mask matches the actual display.
+# --- Visual PPI disc (used for the circular mask on display pixels) ----
+# Measured from the captures via the interactive crop tuner.
 DEFAULT_CENTER_X = 531
 DEFAULT_CENTER_Y = 515
 DEFAULT_RADIUS   = 466
+
+# --- Polar-coordinate origin (used to project AIS (r, theta) to pixels) ----
+# The radar antenna reference point is NOT the visual PPI centre.  A 2-D
+# grid search against image-blob positions across DAAN and DARC (which have
+# clean AIS-to-radar registration) shows the polar origin sits ~17 pixels
+# to the left and ~3 pixels up of the visual centre.  Using (531, 515) for
+# projection produces a systematic ~17 px AIS-seed misalignment; using the
+# values below brings median per-seed offset below 14 px on DAAN/DARC.
+POLAR_ORIGIN_X   = 514
+POLAR_ORIGIN_Y   = 512
+POLAR_RADIUS_PX  = 466   # display radius in pixels used for r scaling
 
 
 def create_radar_mask(

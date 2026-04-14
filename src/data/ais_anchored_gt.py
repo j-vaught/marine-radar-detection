@@ -38,6 +38,9 @@ from .radar_mask import (
     DEFAULT_CENTER_X,
     DEFAULT_CENTER_Y,
     DEFAULT_RADIUS,
+    POLAR_ORIGIN_X,
+    POLAR_ORIGIN_Y,
+    POLAR_RADIUS_PX,
     create_radar_mask,
     extract_radar_signal,
 )
@@ -56,6 +59,16 @@ MAX_RANGE_M         = 6000.0    # DLR PPI display range (all three sub-sets)
 # resulting sub-cluster seeds one image-blob match.
 POLAR_DBSCAN_EPS_M      = 200.0
 POLAR_DBSCAN_MIN_SAMPLE = 5
+
+# Per-dataset match radius. After the polar-origin calibration fix,
+# DAAN/DARC seeds land within 10–15 px of their blobs, so 30 is tight.
+# MANV has genuine per-frame AIS timestamp drift (mean 67 px, std 45) so
+# a looser value is needed to recover any GT at all.
+DATASET_MATCH_RADIUS = {
+    "DAAN": 30,
+    "DARC": 30,
+    "MANV": 60,
+}
 
 
 # ── Data classes ─────────────────────────────────────────────────────
@@ -136,15 +149,15 @@ def parse_frame_annotations(frame_entry: list) -> list[AISObject]:
 def polar_to_pixel(
     r_m: float,
     theta_rad: float,
-    cx: int = DEFAULT_CENTER_X,
-    cy: int = DEFAULT_CENTER_Y,
-    r_px_max: int = DEFAULT_RADIUS,
+    cx: int = POLAR_ORIGIN_X,
+    cy: int = POLAR_ORIGIN_Y,
+    r_px_max: int = POLAR_RADIUS_PX,
     max_range_m: float = MAX_RANGE_M,
 ) -> tuple[float, float]:
     """Project a single polar boundary point to pixel coordinates.
 
-    Uses the measured PPI circle parameters (not the legacy naive
-    image-centre formula).
+    Uses the *polar origin* (antenna reference) rather than the visual
+    PPI disc centre — these differ by ~17 px in the DLR captures.
     """
     r_px = (r_m / max_range_m) * r_px_max
     px = cx + r_px * np.sin(theta_rad)
@@ -326,9 +339,12 @@ def process_frame(
         **{k: v for k, v in kwargs.items()
            if k in {"threshold", "closing_kernel", "min_area", "max_area"}},
     )
-    return greedy_match(seeds, blobs,
-                        match_radius=kwargs.get("match_radius",
-                                                MATCH_RADIUS_PX))
+    # Dataset-aware match radius (unless overridden explicitly)
+    match_r = kwargs.get("match_radius")
+    if match_r is None:
+        match_r = DATASET_MATCH_RADIUS.get((dataset or "").upper(),
+                                           MATCH_RADIUS_PX)
+    return greedy_match(seeds, blobs, match_radius=match_r)
 
 
 # ── Dataset-level COCO conversion ───────────────────────────────────
