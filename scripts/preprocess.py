@@ -23,7 +23,7 @@ from tqdm import tqdm
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data.polar_to_coco import convert_dataset as polar_to_coco, convert_all_datasets
+from src.data.ais_anchored_gt import convert_all_datasets
 from src.data.haxr_renderer import render_dataset as render_haxr
 from src.data.preprocessing import apply_clahe
 from src.data.radar_mask import apply_radar_mask, create_radar_mask
@@ -99,10 +99,13 @@ def process_dlr(raw_dir: Path, output_dir: Path, cfg: dict, apply_clahe_flag: bo
     merged_coco = convert_all_datasets(
         str(raw_dir),
         datasets=available,
-        max_range=dlr_cfg["max_range"],
-        eps=dlr_cfg["dbscan_eps"],
-        min_samples=dlr_cfg["dbscan_min_samples"],
-        padding=dlr_cfg["bbox_padding"],
+        polar_eps_m=dlr_cfg.get("dbscan_eps", 200.0),
+        polar_min_samples=dlr_cfg.get("dbscan_min_samples", 5),
+        threshold=dlr_cfg.get("blob_threshold", 25),
+        min_area=dlr_cfg.get("blob_min_area", 10),
+        max_area=dlr_cfg.get("blob_max_area", 8000),
+        match_radius=dlr_cfg.get("match_radius_px", 30),
+        include_unclaimed=dlr_cfg.get("include_unclaimed", False),
     )
 
     # Copy images with dataset-prefixed names

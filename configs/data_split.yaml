@@ -38,12 +38,28 @@ haxr:
   box_size: 20             # AIS ground truth bbox size (pixels)
   time_window: 1.0         # AIS matching window (seconds)
 
-# DLR annotation parameters
+# DLR annotation parameters — hybrid AIS-anchored / image-grounded GT
+# (see src/data/ais_anchored_gt.py).
 dlr:
-  max_range: 6000          # meters
-  dbscan_eps: 200          # DBSCAN epsilon for clustering
-  dbscan_min_samples: 5    # DBSCAN minimum cluster size
-  bbox_padding: 12         # bounding box padding (pixels)
+  max_range: 6000           # meters (display range, reference only now)
+
+  # Polar-point DBSCAN: splits each AIS record into per-target seeds.
+  dbscan_eps: 200           # metres
+  dbscan_min_samples: 5
+
+  # Image-grounded blob extraction.
+  blob_threshold: 25        # red-channel intensity threshold
+  blob_min_area: 10         # reject speckle (pixels^2)
+  blob_max_area: 8000       # reject outer-ring / land responses (pixels^2)
+
+  # Greedy AIS seed → blob matching radius (pixels).
+  # 60 chosen empirically: DAAN/DARC match almost everything at 30, but MANV
+  # (harbour scene) shows a systematic 44–66 px AIS→radar offset. 60 recovers
+  # most of MANV without starting to fuse neighbouring harbour vessels.
+  match_radius_px: 60
+
+  # Include bright blobs with no AIS match as category 2 "unlabelled"?
+  include_unclaimed: false
 
 # Tiling parameters
 tiling:
