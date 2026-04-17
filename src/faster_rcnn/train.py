@@ -1,7 +1,14 @@
-"""Train Faster R-CNN with 3-seed multi-run.
+"""Train Faster R-CNN with multi-seed runs.
+
+You supply whichever split + image layout you built. No assumptions about
+directory naming — pass explicit paths.
 
 Usage:
-    python -m src.faster_rcnn.train --data data/processed
+    python -m src.faster_rcnn.train \\
+        --train-ann    <path/to/train.json> \\
+        --val-ann      <path/to/val.json> \\
+        --train-images <path/to/train_images> \\
+        --val-images   <path/to/val_images>
 """
 from __future__ import annotations
 
@@ -22,7 +29,10 @@ def _collate(batch):
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", required=True, help="Processed data root (contains annotations/ and tiles/)")
+    ap.add_argument("--train-ann", required=True, help="Training COCO JSON")
+    ap.add_argument("--val-ann", required=True, help="Validation COCO JSON")
+    ap.add_argument("--train-images", required=True, help="Training image directory")
+    ap.add_argument("--val-images", required=True, help="Validation image directory")
     ap.add_argument("--config", default=str(Path(__file__).parent / "config.yaml"))
     ap.add_argument("--output-dir", default="results/faster_rcnn")
     ap.add_argument("--seeds", nargs="+", type=int, default=None)
@@ -34,14 +44,10 @@ def main() -> None:
         cfg["training"]["device"] = args.device
     seeds = args.seeds or cfg["training"]["seeds"]
 
-    data_dir = Path(args.data)
-    with open(data_dir / "annotations" / "train_tiled.json") as f:
-        train_ann = json.load(f)
-    with open(data_dir / "annotations" / "val_tiled.json") as f:
-        val_ann = json.load(f)
-
-    train_items = coco_to_items(train_ann)
-    val_items = coco_to_items(val_ann)
+    with open(args.train_ann) as f:
+        train_items = coco_to_items(json.load(f))
+    with open(args.val_ann) as f:
+        val_items = coco_to_items(json.load(f))
 
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -50,8 +56,8 @@ def main() -> None:
         print(f"\n--- Faster R-CNN seed={seed} device={cfg['training']['device']} ---")
         model = build_model(cfg)
 
-        train_ds = RadarDetectionDataset(data_dir / "tiles" / "train", train_items)
-        val_ds = RadarDetectionDataset(data_dir / "tiles" / "val", val_items)
+        train_ds = RadarDetectionDataset(args.train_images, train_items)
+        val_ds = RadarDetectionDataset(args.val_images, val_items)
 
         train_loader = DataLoader(
             train_ds,

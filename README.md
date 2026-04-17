@@ -57,57 +57,56 @@ pip install -e ".[dev]"
 ## Fetch the dataset
 
 ```bash
-curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/data-v1.0/processed-v1.tar.zst
-curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/data-v1.0/processed-v1.tar.zst.sha256
+curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/code-v1.1/processed-v1.tar.zst
+curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/code-v1.1/processed-v1.tar.zst.sha256
 sha256sum -c processed-v1.tar.zst.sha256
 zstd -dc processed-v1.tar.zst | tar -xf - -C data/
 ```
 
-This populates `data/processed/images/` (2,239 PPI PNGs) and `data/processed/annotations/` (COCO JSONs including AIS-anchored ground truth). Everything else — tiles, YOLO-format labels, masks — is regenerable per-owner inside the relevant `src/<method>/` folder.
+This populates `data/processed/images/` (2,239 PPI PNGs) and `data/processed/annotations/all.json` — the full AIS-anchored ground truth in one COCO file, unsplit. You decide train/val/test however you want (the paper uses filename prefix: MANV → train, DARC → val, DAAN → test). Tiling, YOLO-format conversion, mask generation, and any format munging are also your call.
 
 ## Running a method
 
-Every method folder runs as a Python module. Pass the COCO annotation JSON and the image directory.
+Every method folder runs as a Python module. You hand it whichever COCO JSON + image directory you built.
 
-**Classical detectors** — single command, prints COCO AP at the end:
+**Classical detectors** — single command, prints COCO AP at the end. The example below evaluates on the full corpus; substitute your own test split if you split the data:
 
 ```bash
-python -m src.cfar.run          --ann data/processed/annotations/test.json --images data/processed/images --variant ca_cfar
-python -m src.morphological.run --ann data/processed/annotations/test.json --images data/processed/images
-python -m src.otsu.run          --ann data/processed/annotations/test.json --images data/processed/images --variant ssotsu
-python -m src.wavelet.run       --ann data/processed/annotations/test.json --images data/processed/images
+python -m src.cfar.run          --ann data/processed/annotations/all.json --images data/processed/images --variant ca_cfar
+python -m src.morphological.run --ann data/processed/annotations/all.json --images data/processed/images
+python -m src.otsu.run          --ann data/processed/annotations/all.json --images data/processed/images --variant ssotsu
+python -m src.wavelet.run       --ann data/processed/annotations/all.json --images data/processed/images
 ```
 
-**Deep learning detectors** — train then infer:
+**Deep learning detectors** — train then infer. Each folder takes explicit train/val paths so you can use whatever split + tiling layout you produced:
 
 ```bash
-# YOLO / RT-DETR need YOLO-format labels (once, per owner)
+# YOLO / RT-DETR need YOLO-format labels; supply your own split files
 python -m src.yolo.coco_to_yolo \
-    --train-ann data/processed/annotations/train_tiled.json \
-    --val-ann   data/processed/annotations/val_tiled.json \
-    --test-ann  data/processed/annotations/test_tiled.json \
-    --train-images data/processed/tiles/train \
-    --val-images   data/processed/tiles/val \
-    --test-images  data/processed/tiles/test \
+    --train-ann <your_train.json> --val-ann <your_val.json> --test-ann <your_test.json> \
+    --train-images <your_train_dir> --val-images <your_val_dir> --test-images <your_test_dir> \
     --out data/processed/yolo
 
 python -m src.yolo.train  --data data/processed/yolo/data.yaml
 python -m src.yolo.infer  --weights results/yolo/best_seed42.pt \
-                          --ann data/processed/annotations/test_tiled.json \
-                          --images data/processed/tiles/test
+                          --ann <your_test.json> --images <your_test_dir>
 
-# Faster R-CNN / U-Net consume COCO directly via their local dataset.py
-python -m src.faster_rcnn.train --data data/processed
-python -m src.faster_rcnn.infer --weights results/faster_rcnn/best_seed42.pth \
-                                --ann data/processed/annotations/test_tiled.json \
-                                --images data/processed/tiles/test
+# Faster R-CNN
+python -m src.faster_rcnn.train \
+    --train-ann <your_train.json> --val-ann <your_val.json> \
+    --train-images <your_train_dir> --val-images <your_val_dir>
+
+# U-Net (segmentation — needs paired image + binary-mask directories you build yourself)
+python -m src.unet.train \
+    --train-images <your_train_images> --train-masks <your_train_masks> \
+    --val-images   <your_val_images>   --val-masks   <your_val_masks>
 ```
 
 Each `infer.py` / `run.py` writes a `results/<method>/*_predictions.json` and prints a COCO AP summary via pycocotools. No central evaluation step.
 
 ## Reproducing the paper
 
-The PDF at [`report/radar_detection_report.pdf`](report/radar_detection_report.pdf) corresponds to release tag `data-v1.0` (matching AIS-anchored GT, calibration, and split convention). All detector hyperparameters live in each method's `config.yaml`.
+The PDF at [`report/radar_detection_report.pdf`](report/radar_detection_report.pdf) corresponds to the AIS-anchored GT, calibration, and paper's split convention (MANV/DARC/DAAN → train/val/test). All detector hyperparameters live in each method's `config.yaml`.
 
 Typst source:
 
