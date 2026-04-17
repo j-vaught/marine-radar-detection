@@ -1,145 +1,116 @@
 # Classical vs. Deep Learning Object Detection in X-Band Marine Radar Imagery
 
-A cross-paradigm benchmark comparing 11 object detection methods -- 7 classical and 4 deep learning -- on X-band marine radar PPI imagery using the DLR DAAN and HAXR datasets.
+A cross-paradigm benchmark of 8 object detection methods — 4 classical and 4 deep learning — on the DLR DAAN / DARC / MANV corpus.
 
-**Authors:** J.C. Vaught and Ty Dangerfield
+**Authors:** J.C. Vaught and Ty Dangerfield — University of South Carolina CSCE 763.
+**Paper:** [`report/radar_detection_report.pdf`](report/radar_detection_report.pdf)
+**Data:** [release `data-v1.0`](https://github.com/j-vaught/marine-radar-detection/releases/tag/data-v1.0)
 
 ## Methods
 
-### Classical (7)
+Each method is a self-contained folder under `src/`. Owners are free to reshape inputs however they want — the only shared inputs are the COCO-format annotations and PPI images shipped in the data release.
 
-| Method | Description |
-|--------|-------------|
-| CA-CFAR | Cell-Averaging Constant False Alarm Rate detector |
-| GO-CFAR | Greatest-Of CFAR (clutter edge robust) |
-| SO-CFAR | Smallest-Of CFAR (multi-target robust) |
-| OS-CFAR | Order-Statistic CFAR |
-| Morphological | Otsu binarization + opening/closing + connected components |
-| Wavelet-SWT | 2D stationary wavelet transform with HF subband thresholding |
-| SSOTSU | Speed-up seed point Otsu for small-target detection |
+| Folder | Methods | Entry point(s) |
+|---|---|---|
+| `src/cfar/` | CA / GO / SO / OS-CFAR | `run.py` |
+| `src/morphological/` | Otsu + opening/closing + CC | `run.py` |
+| `src/otsu/` | Otsu, SSOTSU | `run.py` |
+| `src/wavelet/` | Stationary wavelet transform (db4, 3 levels) | `run.py` |
+| `src/yolo/` | YOLOv11 (Ultralytics) | `train.py`, `infer.py`, `coco_to_yolo.py` |
+| `src/rtdetr/` | RT-DETR (Ultralytics) | `train.py`, `infer.py`, `coco_to_yolo.py` |
+| `src/faster_rcnn/` | Faster R-CNN (torchvision) | `train.py`, `infer.py`, `dataset.py` |
+| `src/unet/` | U-Net segmentation | `train.py`, `infer.py`, `dataset.py` |
 
-### Deep Learning (4)
+Each folder also contains a `config.yaml` (hyperparameters) and a `detector.py` or `model.py` (core logic).
 
-| Method | Description |
-|--------|-------------|
-| YOLOv11-OBB | Oriented bounding box detection with SAHI tiled inference |
-| Faster R-CNN | Radar-optimized anchor generation and scale normalization |
-| U-Net | Per-pixel segmentation with bounding box extraction |
-| RT-DETR | Real-Time DEtection TRansformer (NMS-free, end-to-end) |
-
-## Project Structure
+## Project structure
 
 ```
 marine-radar-detection/
-├── configs/
-│   ├── classical/              # CFAR, morphological, wavelet, Otsu configs
-│   └── deep_learning/          # YOLOv11, Faster R-CNN, U-Net, RT-DETR configs
 ├── data/
-│   ├── raw/
-│   │   ├── DAAN/               # DLR DAAN dataset (760 PPI frames)
-│   │   └── HAXR/               # DLR HAXR dataset
-│   └── processed/              # Tiles, annotations, and splits (generated)
+│   ├── raw/HAXR/              # 5.1 GB — kept for future work
+│   └── processed/
+│       ├── images/            # 2,239 PPI PNGs (from data-v1.0)
+│       └── annotations/       # COCO JSONs (full + tiled)
+├── dist/                      # gitignored — release tarballs
+├── report/                    # Typst source + compiled PDFs
 ├── src/
-│   ├── data/                   # Preprocessing, tiling, datasets, temporal splitting
-│   ├── classical/              # All 7 classical detection implementations
-│   ├── deep_learning/          # All 4 DL model wrappers
-│   ├── evaluation/             # COCO metrics, TIDE analysis, benchmarking, stats
-│   └── visualization/          # Pareto plots, AP comparisons, detection overlays
-├── scripts/                    # Pipeline entry points
-├── results/                    # Outputs (predictions, figures, tables)
-├── Makefile                    # Convenience targets
-└── pyproject.toml              # Dependencies
+│   ├── cfar/ morphological/ otsu/ wavelet/          # classical
+│   └── yolo/ rtdetr/ faster_rcnn/ unet/             # deep learning
+├── pyproject.toml
+└── README.md
 ```
+
+No shared `common/`, `eval/`, `scripts/`, `configs/`, or `Makefile`. Each method folder is self-contained so a teammate can take ownership of one detector without touching anyone else's code. Helper functions (circular PPI mask, COCO → YOLO conversion, pycocotools AP) are inlined per folder; ~200 lines of intentional duplication buys team sovereignty.
 
 ## Setup
 
-Requires Python 3.10+ and CUDA 12.4.
+Requires Python 3.10+ and (for DL) CUDA 12.4.
 
 ```bash
-# Create virtual environment and install everything
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install --upgrade pip setuptools wheel
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 pip install -e ".[dev]"
 ```
 
-Or use the Makefile:
+## Fetch the dataset
 
 ```bash
-make setup
+curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/data-v1.0/processed-v1.tar.zst
+curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/data-v1.0/processed-v1.tar.zst.sha256
+sha256sum -c processed-v1.tar.zst.sha256
+zstd -dc processed-v1.tar.zst | tar -xf - -C data/
 ```
 
-## Usage
+This populates `data/processed/images/` (2,239 PPI PNGs) and `data/processed/annotations/` (COCO JSONs including AIS-anchored ground truth). Everything else — tiles, YOLO-format labels, masks — is regenerable per-owner inside the relevant `src/<method>/` folder.
 
-### 1. Prepare Data
+## Running a method
 
-Place the DLR DAAN and HAXR datasets in `data/raw/`, then preprocess:
+Every method folder runs as a Python module. Pass the COCO annotation JSON and the image directory.
+
+**Classical detectors** — single command, prints COCO AP at the end:
 
 ```bash
-make preprocess-daan
-make preprocess-haxr
+python -m src.cfar.run          --ann data/processed/annotations/test.json --images data/processed/images --variant ca_cfar
+python -m src.morphological.run --ann data/processed/annotations/test.json --images data/processed/images
+python -m src.otsu.run          --ann data/processed/annotations/test.json --images data/processed/images --variant ssotsu
+python -m src.wavelet.run       --ann data/processed/annotations/test.json --images data/processed/images
 ```
 
-This tiles all PPI frames to 640x640, clips annotations, and creates temporal train/val/test splits.
-
-### 2. Run Classical Methods
+**Deep learning detectors** — train then infer:
 
 ```bash
-make classical
+# YOLO / RT-DETR need YOLO-format labels (once, per owner)
+python -m src.yolo.coco_to_yolo \
+    --train-ann data/processed/annotations/train_tiled.json \
+    --val-ann   data/processed/annotations/val_tiled.json \
+    --test-ann  data/processed/annotations/test_tiled.json \
+    --train-images data/processed/tiles/train \
+    --val-images   data/processed/tiles/val \
+    --test-images  data/processed/tiles/test \
+    --out data/processed/yolo
+
+python -m src.yolo.train  --data data/processed/yolo/data.yaml
+python -m src.yolo.infer  --weights results/yolo/best_seed42.pt \
+                          --ann data/processed/annotations/test_tiled.json \
+                          --images data/processed/tiles/test
+
+# Faster R-CNN / U-Net consume COCO directly via their local dataset.py
+python -m src.faster_rcnn.train --data data/processed
+python -m src.faster_rcnn.infer --weights results/faster_rcnn/best_seed42.pth \
+                                --ann data/processed/annotations/test_tiled.json \
+                                --images data/processed/tiles/test
 ```
 
-Runs all 7 classical detectors on the test split and saves COCO-format predictions to `results/classical/`.
+Each `infer.py` / `run.py` writes a `results/<method>/*_predictions.json` and prints a COCO AP summary via pycocotools. No central evaluation step.
 
-### 3. Train Deep Learning Models
+## Reproducing the paper
 
-Each model is trained with 3 random seeds for statistical comparison:
+The PDF at [`report/radar_detection_report.pdf`](report/radar_detection_report.pdf) corresponds to release tag `data-v1.0` (matching AIS-anchored GT, calibration, and split convention). All detector hyperparameters live in each method's `config.yaml`.
+
+Typst source:
 
 ```bash
-make train-yolo      # YOLOv11-OBB + SAHI
-make train-frcnn     # Faster R-CNN
-make train-unet      # U-Net segmentation
-make train-rtdetr    # RT-DETR
+typst compile report/report.typ report/radar_detection_report.pdf
 ```
-
-### 4. Evaluate
-
-```bash
-make evaluate
-```
-
-Computes COCO metrics (AP@0.5, AP@0.75, AP@[0.50:0.95], AR) stratified by object size, plus TIDE error decomposition for all 11 methods.
-
-### 5. Generate Report Figures
-
-```bash
-make figures
-```
-
-Produces AP comparison bar charts, accuracy vs. latency Pareto plots, and TIDE error breakdowns.
-
-## Evaluation
-
-- **Metrics:** COCO AP/AR stratified by object size (small, medium, large)
-- **Error analysis:** TIDE framework decomposing errors into classification, localization, duplicate, background, and missed components
-- **Benchmarking:** Inference latency, FLOPs, and parameter count
-- **Statistical testing:** Pairwise bootstrap tests (10,000 resamples) with Bonferroni correction across the 3-seed DL runs
-
-## Dataset
-
-**DLR DAAN:** 760 X-band PPI frames tiled to 3,040 patches at 640x640 with 11,893 annotated instances. Bounding box, oriented bounding box, and segmentation annotations. Temporal splitting by recording session prevents data leakage.
-
-## References
-
-1. Finn & Johnson, "Adaptive detection mode with threshold control," *RCA Review*, 1968.
-2. Rohling, "Radar CFAR thresholding in clutter and multiple target situations," *IEEE Trans. AES*, 1983.
-3. Duk et al., "Target detection in sea-clutter using stationary wavelet transforms," *IEEE Trans. AES*, 2017.
-4. Li et al., "A speed-up seed point Otsu method for ship detection," *IEEE IGARSS*, 2016.
-5. Xu et al., "Adaptive clustering-based marine radar sea clutter normalization," *J. Sensors*, 2021.
-6. Chen et al., "Automatic detection of scanning radar images based on Radar PPInet," *Remote Sensing*, 2021.
-7. Chen et al., "Marine-Faster R-CNN for navigation radar PPI images," *Front. Inf. Technol. Electron. Eng.*, 2022.
-8. Heuer et al., "Marine radar object detection using SAHI enhanced YOLOv11-OBB," *Sensors*, 2025.
-9. Yee, "Onet: Twin U-Net for semantic segmentation in radar images," *IEEE Trans. Image Process.*, 2025.
-10. Zhang et al., "CCDN-DETR for multi-class SAR object detection," *Sensors*, 2024.
-11. Bolya et al., "TIDE: A general toolbox for identifying object detection errors," *ECCV*, 2020.
-12. Zhang & Li, "Survey on deep learning-based marine object detection," *J. Adv. Transp.*, 2021.
