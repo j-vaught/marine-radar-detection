@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from ..classical.utils import binary_mask_to_bboxes
+from .utils import binary_mask_to_bboxes
 
 
 class DoubleConv(nn.Module):
