@@ -59,20 +59,20 @@
 // and reduces the gap before body copy.
 #show heading.where(level: 1): it => {
   set text(fill: garnet, size: 12pt, weight: "bold")
-  set block(above: 1.15em, below: 0.45em)
+  set block(above: 0.7em, below: 0.5em)
   block[
     #smallcaps(it.body)
-    #v(2pt)            // small absolute gap under title, before rule
-    #line(length: 100%, stroke: 0.8pt + garnet)
+    #v(-6pt)            // small absolute gap under title, before rule
+    #line(length: 100%, stroke: 1pt + garnet)
   ]
 }
 #show heading.where(level: 2): it => {
   set text(fill: black-90, size: 10.5pt, weight: "bold")
-  block(above: 0.85em, below: 0.25em)[#it.body]
+  block(above: 0.7em, below: 0.3em)[#it.body]
 }
 #show heading.where(level: 3): it => {
-  set text(fill: black-90, size: 10pt, weight: "bold", style: "italic")
-  block(above: 0.65em, below: 0.1em)[#it.body]
+  set text(fill: black-90, size: 10pt, weight: "semibold", style: "italic")
+  block(above: 0.7em, below: 0.3em)[#it.body]
 }
 
 // ── Link / ref / caption styles (mirror report.typ) ──────────────────

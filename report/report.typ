@@ -54,24 +54,24 @@
 #set par(justify: true, leading: 0.55em, first-line-indent: 0pt)
 
 // Heading styles – garnet accents, no rounded edges anywhere.
-// Tighter vertical rhythm: the garnet rule sits snug under the H1 title
-// text, H2/H3 hug the following paragraph.
+// Tightened heading styles — pulls the underline close to the title text
+// and reduces the gap before body copy.
 #show heading.where(level: 1): it => {
   set text(fill: garnet, size: 12pt, weight: "bold")
-  set block(above: 1.15em, below: 0.45em)
+  set block(above: 0.7em, below: 0.5em)
   block[
     #smallcaps(it.body)
-    #v(2pt)
-    #line(length: 100%, stroke: 0.8pt + garnet)
+    #v(-6pt)
+    #line(length: 100%, stroke: 1pt + garnet)
   ]
 }
 #show heading.where(level: 2): it => {
   set text(fill: black-90, size: 10.5pt, weight: "bold")
-  block(above: 0.85em, below: 0.25em)[#it.body]
+  block(above: 0.7em, below: 0.3em)[#it.body]
 }
 #show heading.where(level: 3): it => {
-  set text(fill: black-90, size: 10pt, weight: "bold", style: "italic")
-  block(above: 0.65em, below: 0.1em)[#it.body]
+  set text(fill: black-90, size: 10pt, weight: "semibold", style: "italic")
+  block(above: 0.7em, below: 0.3em)[#it.body]
 }
 
 // Link / ref styling
@@ -104,18 +104,17 @@
       in X-Band Marine Radar Imagery
     ]
   ]
-  #v(0.5em)
+  #v(-10pt)
   #text(size: 11pt)[
-    *J.C. Vaught* #h(1em) *Ty Dangerfield* \
+    *J. Vaught, T. Dangerfield* \
   ]
-  #v(0.1em)
+  #v(-5pt)
   #text(size: 9pt, fill: black-70, style: "italic")[
-    Department of Computer Science & Engineering, University of South Carolina \
     CSCE 763 — Digital Image Processing \
   ]
 ]
 
-#v(0.4em)
+#v(-5pt)
 #line(length: 100%, stroke: 0.4pt + black-50)
 #v(0.2em)
 
@@ -130,30 +129,18 @@
   #text(size: 9.5pt)[
     X-band marine radar produces plan-position-indicator (PPI) imagery in which
     vessels appear as bright returns against sea clutter.  We present the
-    first head-to-head benchmark of seven classical signal-processing
-    detectors (CA/GO/SO-CFAR, morphological, Otsu, SSOTSU, Wavelet-SWT)
-    against three modern deep-learning detectors (YOLOv11, RT-DETR, Faster
-    R-CNN) on the DLR DAAN, DARC, and MANV corpora.  Constructing a
+    first head-to-head benchmark of classical signal-processing
+    detectors against three modern deep-learning detectors
+     on the DLR DAAN, DARC, and MANV corpora.  Constructing a
     trustworthy evaluation required two methodological contributions we
-    believe are reusable.  First, we identify and fix a systematic AIS
-    polar-origin mis-calibration in the released DLR data that offsets
-    every AIS-correlated target by 17 px in DAAN/DARC, and an additional
-    *range-scale* bug in MANV: that sub-dataset was recorded at 6 m/px
-    vs.\ the 11–12 m/px of DAAN and DARC, so projections compressed AIS
-    positions to half their true radial distance.  Second, we replace the
-    default DBSCAN-padded ground-truth boxes with a hybrid
-    AIS-anchored / image-grounded bounding box obtained by matching each
-    AIS seed to the tight extent of its radar blob.  Under the clean GT
-    and a unified COCO-style evaluation, *YOLOv11 reaches AP\@0.50 = 0.776
-    ± 0.06* (mean over 3 seeds), edging past RT-DETR at 0.738 and Faster
-    R-CNN at 0.545.  The best classical baselines (morphological 0.537,
-    Otsu 0.534, CA-CFAR 0.483) are competitive but below the deep methods.
+    believe are reusable. Under the clean GT
+    and a unified COCO-style evaluation(which we developed), YOLOv11 reaches AP\@0.50 = 0.776
+    ± 0.06, edging past RT-DETR at 0.738 and Faster
+    R-CNN at 0.545.  The best classical baselines are competitive but below the deep methods.
     Per-dataset analysis reveals that CA-CFAR dominates on the close-range
     MANV capture (AP\@0.50 = 0.785) while morphological and Otsu lead on
     the long-range DAAN/DARC captures — an inversion that mirrors the
-    physical SNR regime each technique was designed for.  All code,
-    configs, checkpoints, and the cleaned annotations are released as a
-    reproducible benchmark.
+    physical SNR regime each technique was designed for.
   ]
 ]
 
@@ -237,6 +224,14 @@ Each frame ships with a `polarMeas.json` file listing per-object radar-
 return boundary points in polar (r, theta) coordinates along with
 AIS-correlated identity.  @fig:dataset summarises the splits.
 
+== Dataset-aware Target Isolation
+
+Raw captures contain a substantial display overlay (compass rose, bearing
+ticks, range rings, control panel) plus a solid coloured PPI background.
+Naïve grayscale conversion maps UI chrome onto the same intensity range
+as radar returns, producing systematic false positives for every
+classical detector we evaluated.
+
 #figure(
   image("figures/fig8_dataset.png", width: 100%),
   caption: [
@@ -246,14 +241,6 @@ AIS-correlated identity.  @fig:dataset summarises the splits.
     denser respectively.
   ],
 ) <fig:dataset>
-
-== Dataset-aware Target Isolation
-
-Raw captures contain a substantial display overlay (compass rose, bearing
-ticks, range rings, control panel) plus a solid coloured PPI background.
-Naïve grayscale conversion maps UI chrome onto the same intensity range
-as radar returns, producing systematic false positives for every
-classical detector we evaluated.
 
 *DAAN and DARC* use a blue PPI background (BGR ≈ (140, 0, 0)) with
 near-white vessel returns (BGR ≈ (234, 239, 226)) and green bearing
