@@ -22,6 +22,8 @@ def _print_coco_ap(ann_path: str, pred_path: Path) -> None:
 
 
 def main() -> None:
+    from ultralytics import YOLO
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--weights", required=True, help=".pt checkpoint")
     ap.add_argument("--ann", required=True, help="COCO test JSON")
@@ -40,6 +42,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     preds: list[dict] = []
+    yolo_model = None if args.sahi else YOLO(args.weights)
     for info in tqdm(ann["images"], desc="yolo"):
         img_path = Path(args.images) / info["file_name"]
         if not img_path.exists():
@@ -56,7 +59,7 @@ def main() -> None:
         else:
             img = cv2.imread(str(img_path))
             for x1, y1, x2, y2, score in predict_yolov11(
-                args.weights, img, conf=args.conf, device=args.device
+                yolo_model, img, conf=args.conf, device=args.device
             ):
                 preds.append({
                     "image_id": info["id"], "category_id": 1,

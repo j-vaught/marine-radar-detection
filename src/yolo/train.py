@@ -32,7 +32,15 @@ def main() -> None:
 
     for seed in seeds:
         print(f"\n--- YOLOv11 seed={seed} device={cfg['training']['device']} ---")
-        train_yolov11(args.data, args.config, str(out), seed=seed)
+        train_yolov11(
+            args.data,
+            args.config,
+            str(out),
+            seed=seed,
+            device=args.device,
+        )
+        best_path = out / f"best_seed{seed}.pt"
+        print(f"Saved stable checkpoint -> {best_path}")
 
 
 if __name__ == "__main__":

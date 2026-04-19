@@ -19,6 +19,14 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import shutil
+
+
+def extract_names(coco_path: str | Path) -> list[str]:
+    with open(coco_path) as f:
+        coco = json.load(f)
+    categories = sorted(coco["categories"], key=lambda cat: cat["id"])
+    return [category["name"] for category in categories]
 
 
 def write_labels(coco_path: str | Path, image_dir: str | Path, label_dir: str | Path) -> int:
@@ -46,6 +54,22 @@ def write_labels(coco_path: str | Path, image_dir: str | Path, label_dir: str | 
     return len(imgs)
 
 
+def ensure_split_image_link(image_dir: str | Path, out_root: Path, split: str) -> None:
+    split_image_dir = out_root / "images" / split
+    resolved_images = Path(image_dir).resolve()
+    if split_image_dir.exists() or split_image_dir.is_symlink():
+        if split_image_dir.is_dir() and not split_image_dir.is_symlink():
+            shutil.rmtree(split_image_dir)
+        else:
+            split_image_dir.unlink()
+
+    split_image_dir.mkdir(parents=True, exist_ok=True)
+    for image_path in sorted(resolved_images.iterdir()):
+        if not image_path.is_file():
+            continue
+        (split_image_dir / image_path.name).symlink_to(image_path)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Build YOLO labels + data.yaml from COCO")
     ap.add_argument("--train-ann", required=True)
@@ -63,15 +87,19 @@ def main() -> None:
         ("val", args.val_ann, args.val_images),
         ("test", args.test_ann, args.test_images),
     ]:
-        n = write_labels(ann, images, out / split / "labels")
-        print(f"{split}: {n} labels in {out / split / 'labels'}")
+        ensure_split_image_link(images, out, split)
+        label_dir = out / "labels" / split
+        n = write_labels(ann, images, label_dir)
+        print(f"{split}: {n} labels in {label_dir}")
 
+    names = extract_names(args.train_ann)
+    names_yaml = "\n".join(f"  {idx}: {name}" for idx, name in enumerate(names))
     (out / "data.yaml").write_text(
         f"path: {out.resolve()}\n"
-        f"train: {Path(args.train_images).resolve()}\n"
-        f"val: {Path(args.val_images).resolve()}\n"
-        f"test: {Path(args.test_images).resolve()}\n"
-        "names:\n  0: target\n"
+        f"train: images/train\n"
+        f"val: images/val\n"
+        f"test: images/test\n"
+        f"names:\n{names_yaml}\n"
     )
     print(f"Wrote {out / 'data.yaml'}")
 

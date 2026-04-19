@@ -1,9 +1,9 @@
-"""YOLOv11-OBB with SAHI tiled inference for marine radar detection."""
+"""YOLOv11 with optional SAHI tiled inference for marine radar detection."""
 
+import shutil
 from pathlib import Path
 
 import numpy as np
-import torch
 import yaml
 
 
@@ -12,14 +12,16 @@ def train_yolov11(
     config_path: str | Path,
     output_dir: str | Path,
     seed: int = 42,
+    device: str | None = None,
 ):
-    """Train YOLOv11-OBB model.
+    """Train a YOLOv11 model.
 
     Args:
         data_yaml: Path to YOLO-format data config.
         config_path: Path to model config YAML.
         output_dir: Directory for training outputs.
         seed: Random seed.
+        device: Optional device override passed through to Ultralytics.
     """
     from ultralytics import YOLO
 
@@ -31,6 +33,11 @@ def train_yolov11(
     train_cfg = cfg["training"]
     aug_cfg = cfg.get("augmentation", {})
 
+    resolved_device = device if device is not None else train_cfg["device"]
+    output_dir = Path(output_dir).resolve()
+    run_name = f"yolov11_seed{seed}"
+    run_dir = output_dir / run_name
+
     model.train(
         data=str(data_yaml),
         epochs=train_cfg["epochs"],
@@ -41,11 +48,12 @@ def train_yolov11(
         lrf=train_cfg["lrf"],
         warmup_epochs=train_cfg["warmup_epochs"],
         patience=train_cfg["patience"],
-        device=train_cfg["device"],
+        device=resolved_device,
         workers=train_cfg["workers"],
         seed=seed,
         project=str(output_dir),
-        name=f"yolov11_seed{seed}",
+        name=run_name,
+        exist_ok=True,
         hsv_h=aug_cfg.get("hsv_h", 0.015),
         hsv_s=aug_cfg.get("hsv_s", 0.7),
         hsv_v=aug_cfg.get("hsv_v", 0.4),
@@ -54,23 +62,31 @@ def train_yolov11(
         mosaic=aug_cfg.get("mosaic", 1.0),
         mixup=aug_cfg.get("mixup", 0.1),
     )
+
+    best_path = run_dir / "weights" / "best.pt"
+    stable_best_path = Path(output_dir) / f"best_seed{seed}.pt"
+    if best_path.exists():
+        shutil.copy2(best_path, stable_best_path)
+    else:
+        raise FileNotFoundError(f"Expected trained weights at {best_path}")
+
     return model
 
 
 def predict_yolov11(
-    model_path: str | Path,
+    model_path: str | Path | object,
     image: np.ndarray,
     conf: float = 0.25,
     device: str = "0",
 ) -> np.ndarray:
-    """Run YOLOv11-OBB inference on a single image.
+    """Run YOLOv11 inference on a single image.
 
     Returns:
         (N, 5) array of [x1, y1, x2, y2, confidence].
     """
     from ultralytics import YOLO
 
-    model = YOLO(str(model_path))
+    model = model_path if hasattr(model_path, "predict") else YOLO(str(model_path))
     results = model.predict(image, conf=conf, device=device, verbose=False)
 
     if len(results) == 0 or results[0].boxes is None:
@@ -86,7 +102,7 @@ def predict_sahi(
     image_path: str | Path,
     config_path: str | Path,
 ) -> list[dict]:
-    """Run SAHI tiled inference with YOLOv11-OBB.
+    """Run SAHI tiled inference with YOLOv11.
 
     Returns:
         List of prediction dicts with 'bbox' and 'score' keys.
