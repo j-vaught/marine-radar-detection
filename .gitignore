@@ -45,5 +45,9 @@ weights/
 wandb/
 runs/
 
+# Rust
+target/
+src/morphological/Cargo.lock
+
 # Apple double files
 ._*

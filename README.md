@@ -67,15 +67,27 @@ This populates `data/processed/images/` (2,239 PPI PNGs) and `data/processed/ann
 
 ## Running a method
 
-Every method folder runs as a Python module. You hand it whichever COCO JSON + image directory you built.
+Most method folders run as Python modules. `src/morphological` is now a native Rust/CUDA crate.
 
-**Classical detectors** — single command, prints COCO AP at the end. The example below evaluates on the full corpus; substitute your own test split if you split the data:
+**Classical detectors** — the Python methods below print COCO AP at the end. The native morphology crate writes COCO-format predictions JSON. The example below evaluates on the full corpus; substitute your own test split if you split the data:
 
 ```bash
 python -m src.cfar.run          --ann data/processed/annotations/all.json --images data/processed/images --variant ca_cfar
-python -m src.morphological.run --ann data/processed/annotations/all.json --images data/processed/images
+cargo run --release --manifest-path src/morphological/Cargo.toml -- \
+    run --ann data/processed/annotations/all.json --images data/processed/images \
+    --out results/morphological_predictions.json --backend cpu
+cargo run --release --manifest-path src/morphological/Cargo.toml -- \
+    eval --ann data/processed/annotations/all.json --pred results/morphological_predictions.json
 python -m src.otsu.run          --ann data/processed/annotations/all.json --images data/processed/images --variant ssotsu
 python -m src.wavelet.run       --ann data/processed/annotations/all.json --images data/processed/images
+```
+
+To use the CUDA preprocessing backend instead of the CPU path:
+
+```bash
+cargo run --release --features cuda --manifest-path src/morphological/Cargo.toml -- \
+    run --ann data/processed/annotations/all.json --images data/processed/images \
+    --out results/morphological_predictions.json --backend cuda
 ```
 
 **Deep learning detectors** — train then infer. Each folder takes explicit train/val paths so you can use whatever split + tiling layout you produced:
