@@ -13,15 +13,15 @@ Each method is a self-contained folder under `src/`. Owners are free to reshape 
 | Folder | Methods | Entry point(s) |
 |---|---|---|
 | `src/cfar/` | CA / GO / SO / OS-CFAR | `run.py` |
-| `src/morphological/` | Otsu + opening/closing + CC | `run.py` |
-| `src/otsu/` | Otsu, SSOTSU | `run.py` |
+| `src/morphological/` | Otsu + opening/closing + CC | `Cargo.toml` (`run`, `eval`, `bench`) |
+| `src/otsu/` | Otsu, SSOTSU | `Cargo.toml` (`run`, `eval`, `bench`, `matrix`) |
 | `src/wavelet/` | Stationary wavelet transform (db4, 3 levels) | `run.py` |
 | `src/yolo/` | YOLOv11 (Ultralytics) | `train.py`, `infer.py`, `coco_to_yolo.py` |
 | `src/rtdetr/` | RT-DETR (Ultralytics) | `train.py`, `infer.py`, `coco_to_yolo.py` |
 | `src/faster_rcnn/` | Faster R-CNN (torchvision) | `train.py`, `infer.py`, `dataset.py` |
 | `src/unet/` | U-Net segmentation | `train.py`, `infer.py`, `dataset.py` |
 
-Each folder also contains a `config.yaml` (hyperparameters) and a `detector.py` or `model.py` (core logic).
+Each Python method folder also contains a `config.yaml` (hyperparameters) and a `detector.py` or `model.py` (core logic). The native method folders also have per-method READMEs: [CFAR](src/cfar/README.md), [Morphological](src/morphological/README.md), [Otsu](src/otsu/README.md).
 
 ## Project structure
 
@@ -67,27 +67,34 @@ This populates `data/processed/images/` (2,239 PPI PNGs) and `data/processed/ann
 
 ## Running a method
 
-Most method folders run as Python modules. `src/morphological` is now a native Rust/CUDA crate.
+Most method folders run as Python modules. `src/morphological` and `src/otsu` are native Rust/CUDA crates.
 
 **Classical detectors** — the Python methods below print COCO AP at the end. The native morphology crate writes COCO-format predictions JSON. The example below evaluates on the full corpus; substitute your own test split if you split the data:
 
 ```bash
 python -m src.cfar.run          --ann data/processed/annotations/all.json --images data/processed/images --variant ca_cfar
 cargo run --release --manifest-path src/morphological/Cargo.toml -- \
-    run --ann data/processed/annotations/all.json --images data/processed/images \
-    --out results/morphological_predictions.json --backend cpu
+    run --ann data/processed/annotations/all.json --images data/processed/images --backend cpu
 cargo run --release --manifest-path src/morphological/Cargo.toml -- \
-    eval --ann data/processed/annotations/all.json --pred results/morphological_predictions.json
-python -m src.otsu.run          --ann data/processed/annotations/all.json --images data/processed/images --variant ssotsu
+    eval --ann data/processed/annotations/all.json
+cargo run --release --features cuda --manifest-path src/otsu/Cargo.toml -- \
+    run --ann data/processed/annotations/all.json --images data/processed/images --backend cuda --method otsu
+cargo run --release --features cuda --manifest-path src/otsu/Cargo.toml -- \
+    eval --ann data/processed/annotations/all.json --method otsu
 python -m src.wavelet.run       --ann data/processed/annotations/all.json --images data/processed/images
 ```
+
+By default the native morphology crate writes to `results/morphological/predictions.json` and `eval` reads the same path back unless `--out` / `--pred` are supplied explicitly.
+
+The CFAR runner writes to `results/cfar/<variant>_predictions.json` by default unless `--out` is supplied explicitly.
+
+The native Otsu crate writes to `results/otsu/<method>_predictions.json` by default unless `--out` is supplied explicitly. Its `matrix` command writes `results/otsu/matrix.csv` plus per-experiment JSON rows under `results/otsu/per_experiment/`.
 
 To use the CUDA preprocessing backend instead of the CPU path:
 
 ```bash
 cargo run --release --features cuda --manifest-path src/morphological/Cargo.toml -- \
-    run --ann data/processed/annotations/all.json --images data/processed/images \
-    --out results/morphological_predictions.json --backend cuda
+    run --ann data/processed/annotations/all.json --images data/processed/images --backend cuda
 ```
 
 **Deep learning detectors** — train then infer. Each folder takes explicit train/val paths so you can use whatever split + tiling layout you produced:

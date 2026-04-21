@@ -99,18 +99,27 @@ def main() -> None:
     ap.add_argument("--images", required=True, help="Directory of PPI images")
     ap.add_argument("--config", default=str(Path(__file__).parent / "config.yaml"))
     ap.add_argument("--variant", default="ca_cfar", choices=METHODS)
-    ap.add_argument("--out-dir", default="results/cfar")
+    ap.add_argument("--out", default=None,
+                    help="Prediction JSON path. Defaults to results/cfar/<variant>_predictions.json")
+    ap.add_argument("--out-dir", default=None,
+                    help="Deprecated convenience directory for predictions. "
+                         "If set, writes <out-dir>/<variant>_predictions.json")
     args = ap.parse_args()
 
     cfg = yaml.safe_load(Path(args.config).read_text())[args.variant]
     with open(args.ann) as f:
         ann = json.load(f)
 
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
     preds = run(args.variant, cfg, args.images, ann["images"])
 
-    pred_path = out_dir / f"{args.variant}_predictions.json"
+    if args.out and args.out_dir:
+        ap.error("use either --out or --out-dir, not both")
+    if args.out:
+        pred_path = Path(args.out)
+    else:
+        out_dir = Path(args.out_dir) if args.out_dir else Path("results/cfar")
+        pred_path = out_dir / f"{args.variant}_predictions.json"
+    pred_path.parent.mkdir(parents=True, exist_ok=True)
     pred_path.write_text(json.dumps(preds))
     print(f"\nSaved {len(preds)} predictions -> {pred_path}\n")
     _print_coco_ap(args.ann, pred_path)

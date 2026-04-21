@@ -30,7 +30,7 @@ struct RunArgs {
     #[arg(long)]
     images: PathBuf,
     #[arg(long)]
-    out: PathBuf,
+    out: Option<PathBuf>,
     #[arg(long, value_enum, default_value_t = Backend::Cpu)]
     backend: Backend,
     #[arg(long)]
@@ -57,8 +57,8 @@ struct BenchArgs {
     backend: Backend,
     #[arg(long)]
     compare_python: bool,
-    #[arg(long, default_value = ".venv/bin/python")]
-    python: PathBuf,
+    #[arg(long)]
+    python: Option<PathBuf>,
     #[command(flatten)]
     config: ConfigArgs,
 }
@@ -68,9 +68,9 @@ struct EvalArgs {
     #[arg(long)]
     ann: PathBuf,
     #[arg(long)]
-    pred: PathBuf,
-    #[arg(long, default_value = ".venv/bin/python")]
-    python: PathBuf,
+    pred: Option<PathBuf>,
+    #[arg(long)]
+    python: Option<PathBuf>,
 }
 
 #[derive(Args, Clone)]
@@ -124,12 +124,29 @@ fn main() -> Result<()> {
     }
 }
 
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("crate layout should be <repo>/src/morphological")
+        .to_path_buf()
+}
+
+fn default_predictions_path() -> PathBuf {
+    repo_root().join("results/morphological/predictions.json")
+}
+
+fn default_python_path() -> PathBuf {
+    repo_root().join(".venv/bin/python")
+}
+
 fn run(args: RunArgs) -> Result<()> {
     let config = DetectorConfig::from(args.config);
     let manifest = load_manifest(&args.ann)?;
     let images = slice_infos(&manifest.images, args.limit);
     let mut predictions = Vec::<CocoPrediction>::new();
     let mut circle_mask = None::<CircleMask>;
+    let out_path = args.out.unwrap_or_else(default_predictions_path);
 
     for info in images {
         let image_path = args.images.join(&info.file_name);
@@ -153,14 +170,14 @@ fn run(args: RunArgs) -> Result<()> {
         }));
     }
 
-    if let Some(parent) = args.out.parent() {
+    if let Some(parent) = out_path.parent() {
         if !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("create {}", parent.display()))?;
         }
     }
-    std::fs::write(&args.out, serde_json::to_vec_pretty(&predictions)?)?;
-    println!("saved {} predictions to {}", predictions.len(), args.out.display());
+    std::fs::write(&out_path, serde_json::to_vec_pretty(&predictions)?)?;
+    println!("saved {} predictions to {}", predictions.len(), out_path.display());
     Ok(())
 }
 
@@ -187,8 +204,9 @@ fn bench(args: BenchArgs) -> Result<()> {
     );
 
     if args.compare_python {
+        let python = args.python.unwrap_or_else(default_python_path);
         let python = benchmark_python(
-            &args.python,
+            &python,
             &args.ann,
             &args.images,
             args.count,
@@ -213,6 +231,8 @@ fn bench(args: BenchArgs) -> Result<()> {
 }
 
 fn eval_predictions(args: EvalArgs) -> Result<()> {
+    let pred_path = args.pred.unwrap_or_else(default_predictions_path);
+    let python = args.python.unwrap_or_else(default_python_path);
     let script = r#"
 from pathlib import Path
 import sys
@@ -228,13 +248,13 @@ ev.evaluate()
 ev.accumulate()
 ev.summarize()
 "#;
-    let status = Command::new(&args.python)
+    let status = Command::new(&python)
         .arg("-c")
         .arg(script)
         .arg(&args.ann)
-        .arg(&args.pred)
+        .arg(&pred_path)
         .status()
-        .with_context(|| format!("run COCO eval via {}", args.python.display()))?;
+        .with_context(|| format!("run COCO eval via {}", python.display()))?;
     if !status.success() {
         return Err(anyhow!("COCO eval command failed"));
     }
