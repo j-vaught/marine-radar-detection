@@ -53,9 +53,17 @@ class RadarDetectionDataset(Dataset):
                 labels = np.zeros((0,), dtype=np.int64)
 
         image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
+        area = (
+            (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+            if len(boxes) > 0
+            else np.zeros((0,), dtype=np.float32)
+        )
         target = {
             "boxes": torch.as_tensor(boxes, dtype=torch.float32).reshape(-1, 4),
             "labels": torch.as_tensor(labels, dtype=torch.int64),
+            "image_id": torch.tensor(int(ann["image_id"]), dtype=torch.int64),
+            "area": torch.as_tensor(area, dtype=torch.float32),
+            "iscrowd": torch.zeros((len(labels),), dtype=torch.int64),
         }
         return image, target
 
@@ -73,5 +81,18 @@ def coco_to_items(coco: dict) -> list[dict]:
             x, y, w, h = a["bbox"]
             boxes.append([x, y, x + w, y + h])
             labels.append(a["category_id"])
-        items.append({"file_name": img["file_name"], "boxes": boxes, "labels": labels})
+        items.append(
+            {
+                "image_id": int(img["id"]),
+                "file_name": img["file_name"],
+                "width": int(img["width"]),
+                "height": int(img["height"]),
+                "boxes": boxes,
+                "labels": labels,
+            }
+        )
     return items
+
+
+def collate_fn(batch):
+    return tuple(zip(*batch))

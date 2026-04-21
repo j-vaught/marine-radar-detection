@@ -15,13 +15,13 @@ Each method is a self-contained folder under `src/`. Owners are free to reshape 
 | `src/cfar/` | CA / GO / SO / OS-CFAR | `run.py` |
 | `src/morphological/` | Otsu + opening/closing + CC | `Cargo.toml` (`run`, `eval`, `bench`) |
 | `src/otsu/` | Otsu, SSOTSU | `Cargo.toml` (`run`, `eval`, `bench`, `matrix`) |
-| `src/wavelet/` | Stationary wavelet transform (db4, 3 levels) | `run.py` |
+| `src/wavelet/` | Stationary wavelet transform (db4, 3 levels) | `Cargo.toml` (`run`, `eval`, `bench`, `sweep-bench`, `matrix`) |
 | `src/yolo/` | YOLOv11 (Ultralytics) | `train.py`, `infer.py`, `coco_to_yolo.py` |
 | `src/rtdetr/` | RT-DETR (Ultralytics) | `train.py`, `infer.py`, `coco_to_yolo.py` |
 | `src/faster_rcnn/` | Faster R-CNN (torchvision) | `train.py`, `infer.py`, `dataset.py` |
 | `src/unet/` | U-Net segmentation | `train.py`, `infer.py`, `dataset.py` |
 
-Each Python method folder also contains a `config.yaml` (hyperparameters) and a `detector.py` or `model.py` (core logic). The native method folders also have per-method READMEs: [CFAR](src/cfar/README.md), [Morphological](src/morphological/README.md), [Otsu](src/otsu/README.md).
+Each Python method folder also contains a `config.yaml` (hyperparameters) and a `detector.py` or `model.py` (core logic). The method folders with dedicated READMEs are: [CFAR](src/cfar/README.md), [Morphological](src/morphological/README.md), [Otsu](src/otsu/README.md), [Wavelet](src/wavelet/README.md), [Faster R-CNN](src/faster_rcnn/README.md), [U-Net](src/unet/README.md).
 
 ## Project structure
 
@@ -67,7 +67,7 @@ This populates `data/processed/images/` (2,239 PPI PNGs) and `data/processed/ann
 
 ## Running a method
 
-Most method folders run as Python modules. `src/morphological` and `src/otsu` are native Rust/CUDA crates.
+Most method folders run as Python modules. `src/morphological`, `src/otsu`, and `src/wavelet` are native Rust/CUDA crates.
 
 **Classical detectors** — the Python methods below print COCO AP at the end. The native morphology crate writes COCO-format predictions JSON. The example below evaluates on the full corpus; substitute your own test split if you split the data:
 
@@ -81,7 +81,11 @@ cargo run --release --features cuda --manifest-path src/otsu/Cargo.toml -- \
     run --ann data/processed/annotations/all.json --images data/processed/images --backend cuda --method otsu
 cargo run --release --features cuda --manifest-path src/otsu/Cargo.toml -- \
     eval --ann data/processed/annotations/all.json --method otsu
-python -m src.wavelet.run       --ann data/processed/annotations/all.json --images data/processed/images
+cargo run --release --features cuda --manifest-path src/wavelet/Cargo.toml -- \
+    run --ann data/processed/annotations/all.json --images data/processed/images \
+    --out results/wavelet/predictions.json --backend cuda
+cargo run --release --features cuda --manifest-path src/wavelet/Cargo.toml -- \
+    eval --ann data/processed/annotations/all.json --pred results/wavelet/predictions.json
 ```
 
 By default the native morphology crate writes to `results/morphological/predictions.json` and `eval` reads the same path back unless `--out` / `--pred` are supplied explicitly.
@@ -125,7 +129,7 @@ Each `infer.py` / `run.py` writes a `results/<method>/*_predictions.json` and pr
 
 ## Reproducing the paper
 
-The PDF at [`report/radar_detection_report.pdf`](report/radar_detection_report.pdf) corresponds to the AIS-anchored GT, calibration, and paper's split convention (MANV/DARC/DAAN → train/val/test). All detector hyperparameters live in each method's `config.yaml`.
+The PDF at [`report/radar_detection_report.pdf`](report/radar_detection_report.pdf) corresponds to the AIS-anchored GT, calibration, and paper's split convention (MANV/DARC/DAAN → train/val/test). Python methods keep their tunables in `config.yaml`; native methods expose defaults and search grids in their Rust sources.
 
 Typst source:
 

@@ -11,7 +11,7 @@ import torch
 import yaml
 from tqdm import tqdm
 
-from .model import build_model, predict_faster_rcnn
+from .model import build_model, predict_faster_rcnn, resolve_device
 
 
 def _print_coco_ap(ann_path: str, pred_path: Path) -> None:
@@ -35,7 +35,7 @@ def main() -> None:
     args = ap.parse_args()
 
     cfg = yaml.safe_load(Path(args.config).read_text())
-    device = f"cuda:{args.device}" if args.device.isdigit() else args.device
+    device = resolve_device(args.device)
 
     with open(args.ann) as f:
         ann = json.load(f)
@@ -43,7 +43,12 @@ def main() -> None:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    model = build_model(cfg)
+    model = build_model(
+        cfg,
+        pretrained=False,
+        box_score_thresh=float(cfg["model"].get("eval_box_score_thresh", 0.0)),
+        box_detections_per_img=int(cfg["model"].get("eval_box_detections_per_img", 300)),
+    )
     model.load_state_dict(torch.load(args.weights, map_location="cpu", weights_only=True))
 
     preds: list[dict] = []

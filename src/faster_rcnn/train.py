@@ -19,12 +19,8 @@ from pathlib import Path
 import yaml
 from torch.utils.data import DataLoader
 
-from .dataset import RadarDetectionDataset, coco_to_items
+from .dataset import RadarDetectionDataset, coco_to_items, collate_fn
 from .model import build_model, train_faster_rcnn
-
-
-def _collate(batch):
-    return tuple(zip(*batch))
 
 
 def main() -> None:
@@ -64,17 +60,24 @@ def main() -> None:
             batch_size=cfg["training"]["batch_size"],
             shuffle=True,
             num_workers=cfg["training"]["workers"],
-            collate_fn=_collate,
+            collate_fn=collate_fn,
+            pin_memory=True,
+            persistent_workers=cfg["training"]["workers"] > 0,
         )
         val_loader = DataLoader(
             val_ds,
             batch_size=cfg["training"]["batch_size"],
             shuffle=False,
             num_workers=cfg["training"]["workers"],
-            collate_fn=_collate,
+            collate_fn=collate_fn,
+            pin_memory=True,
+            persistent_workers=cfg["training"]["workers"] > 0,
         )
 
-        train_faster_rcnn(model, train_loader, val_loader, cfg, str(out), seed=seed)
+        stats = train_faster_rcnn(model, train_loader, val_loader, cfg, str(out), seed=seed)
+        print(
+            f"best_epoch={stats['best_epoch']} best_val_loss={stats['best_val_loss']:.6f}"
+        )
 
 
 if __name__ == "__main__":
