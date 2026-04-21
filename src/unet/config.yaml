@@ -2,23 +2,24 @@
 
 model:
   name: "U-Net"
-  encoder: "resnet34"
-  pretrained_encoder: true
   in_channels: 1               # grayscale radar
-  num_classes: 1                # binary segmentation
-  decoder_channels: [256, 128, 64, 32, 16]
+  num_classes: 1               # binary segmentation
+  base_channels: 32
 
 training:
-  epochs: 80
+  epochs: 12
   batch_size: 4
   optimizer: "AdamW"
   lr: 0.001
   weight_decay: 0.01
   lr_scheduler: "CosineAnnealingLR"
-  T_max: 80
+  T_max: 12
   device: "0"
   workers: 8
-  seeds: [42, 123, 456]
+  amp: true
+  patience: 3
+  seeds: [42]
+  input_size: [640, 640]
 
 loss:
   type: "DiceBCE"              # combined Dice + BCE loss
@@ -26,5 +27,10 @@ loss:
   bce_weight: 0.5
 
 postprocessing:
-  threshold: 0.5               # binary mask threshold
-  min_area: 15                 # minimum component area for bbox extraction
+  threshold: 0.4               # binary mask threshold
+  min_area: 20                 # minimum component area for bbox extraction
+  max_area: 4000
+  dilation: 0
+  box_padding: 0
+  threshold_grid: [0.30, 0.40, 0.50]
+  min_area_grid: [10, 20, 30]

@@ -45,6 +45,7 @@ def main() -> None:
         model = UNet(
             in_channels=cfg["model"]["in_channels"],
             num_classes=cfg["model"]["num_classes"],
+            base_channels=cfg["model"].get("base_channels", 32),
         )
         train_ds = RadarSegmentationDataset(args.train_images, args.train_masks)
         val_ds = RadarSegmentationDataset(args.val_images, args.val_masks)

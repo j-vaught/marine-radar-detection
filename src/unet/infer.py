@@ -38,6 +38,10 @@ def main() -> None:
     post = cfg.get("postprocessing", {})
     threshold = post.get("threshold", 0.5)
     min_area = post.get("min_area", 15)
+    max_area = post.get("max_area", 50000)
+    dilation = post.get("dilation", 0)
+    box_padding = post.get("box_padding", 0)
+    input_size = tuple(cfg["training"].get("input_size", ())) or None
 
     with open(args.ann) as f:
         ann = json.load(f)
@@ -48,6 +52,7 @@ def main() -> None:
     model = UNet(
         in_channels=cfg["model"]["in_channels"],
         num_classes=cfg["model"]["num_classes"],
+        base_channels=cfg["model"].get("base_channels", 32),
     )
     model.load_state_dict(torch.load(args.weights, map_location="cpu", weights_only=True))
 
@@ -57,18 +62,17 @@ def main() -> None:
         if not img_path.exists():
             continue
         img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
-        tensor = torch.from_numpy(img).unsqueeze(0).float() / 255.0
-
-        bboxes, pred_mask = predict_unet(
-            model, tensor, device=device, threshold=threshold, min_area=min_area,
+        bboxes, pred_mask, scores = predict_unet(
+            model,
+            img,
+            device=device,
+            threshold=threshold,
+            min_area=min_area,
+            max_area=max_area,
+            dilation=dilation,
+            box_padding=box_padding,
+            input_size=input_size,
         )
-
-        scores = np.ones(len(bboxes), dtype=np.float32)
-        for j, box in enumerate(bboxes):
-            x1, y1, x2, y2 = box.astype(int)
-            region = pred_mask[max(0, y1):y2, max(0, x1):x2]
-            if region.size > 0:
-                scores[j] = float(region.mean())
 
         for i in range(len(bboxes)):
             x1, y1, x2, y2 = bboxes[i]
