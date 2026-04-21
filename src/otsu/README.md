@@ -110,4 +110,55 @@ Small CUDA smoke runs on 64 real images produced:
 - `results/otsu/otsu_smoke_predictions.json`
 - `results/otsu/ssotsu_smoke_predictions.json`
 
-Those are correctness and runtime checks, not tuned final experiments. In particular, untuned `ssotsu` is still very noisy on this corpus; use the matrix runner to tune it before treating it as a serious baseline. At the moment, CUDA is functionally correct but not the fastest full-search backend for Otsu on this machine.
+## Completed small-grid matrix
+
+The full `40`-experiment small-grid matrix finished on `April 20, 2026` with the CPU backend:
+
+```bash
+src/otsu/target/release/otsu matrix \
+  --ann data/processed/annotations/all.json \
+  --images data/processed/images \
+  --backend cpu \
+  --grid small \
+  --preload
+```
+
+Artifacts live in:
+
+- `results/otsu/matrix.csv`
+- `results/otsu/per_experiment/*.json`
+- `results/otsu/matrix_small_cpu.log`
+
+High-level outcome:
+
+- `OTSU` beat `SSOTSU` on average on this small search grid.
+- `OTSU` mean over all 20 experiments:
+  - `AP50 = 0.5759`
+  - `AP = 0.4121`
+  - `FA/img = 3.18`
+  - mean runtime `10.7 s`
+- `SSOTSU` mean over all 20 experiments:
+  - `AP50 = 0.4656`
+  - `AP = 0.3041`
+  - `FA/img = 5.72`
+  - mean runtime `346.1 s`
+
+Condition-level means:
+
+- `P / OTSU`: `AP50 0.6006`, `AP 0.4105`, `FA/img 2.27`
+- `P / SSOTSU`: `AP50 0.5429`, `AP 0.3483`, `FA/img 2.22`
+- `S / OTSU`: `AP50 0.5584`, `AP 0.4007`, `FA/img 3.46`
+- `S / SSOTSU`: `AP50 0.4473`, `AP 0.2903`, `FA/img 3.79`
+- `T / OTSU`: `AP50 0.5738`, `AP 0.4206`, `FA/img 3.51`
+- `T / SSOTSU`: `AP50 0.4349`, `AP 0.2887`, `FA/img 8.95`
+
+Best observed rows by `AP50`:
+
+- `T-OTSU-MvMv`: `AP50 0.7922`, `AP 0.7574`, `FA/img 1.49`
+- `S-OTSU-6`: `AP50 0.7711`, `AP 0.4910`, `FA/img 1.47`
+- `T-OTSU-DaMv`: `AP50 0.7711`, `AP 0.4910`, `FA/img 1.47`
+- `T-SSOTSU-MvMv`: `AP50 0.7281`, `AP 0.6622`, `FA/img 1.49`
+- `S-SSOTSU-6`: `AP50 0.7272`, `AP 0.6507`, `FA/img 1.46`
+- `T-SSOTSU-DaMv`: `AP50 0.7272`, `AP 0.6507`, `FA/img 1.46`
+
+The main practical conclusion is that the native CPU `OTSU` baseline is currently the strongest cost/performance point in this folder. `SSOTSU` can be competitive on some MANV-centered splits, but on this grid it is slower and less stable overall.
