@@ -1,4 +1,4 @@
-"""Run a trained YOLOv11 checkpoint on the test set, save predictions, print AP."""
+"""Run a trained YOLO checkpoint on the test set, save predictions, print AP."""
 from __future__ import annotations
 
 import argparse
@@ -6,10 +6,9 @@ import json
 from pathlib import Path
 
 import cv2
-import yaml
 from tqdm import tqdm
 
-from .model import predict_yolov11, predict_sahi
+from .model import predict_sahi, predict_yolo, resolve_device
 
 
 def _print_coco_ap(ann_path: str, pred_path: Path) -> None:
@@ -55,8 +54,8 @@ def main() -> None:
                 })
         else:
             img = cv2.imread(str(img_path))
-            for x1, y1, x2, y2, score in predict_yolov11(
-                args.weights, img, conf=args.conf, device=args.device
+            for x1, y1, x2, y2, score in predict_yolo(
+                args.weights, img, conf=args.conf, device=resolve_device(args.device)
             ):
                 preds.append({
                     "image_id": info["id"], "category_id": 1,

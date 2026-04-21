@@ -1,23 +1,26 @@
-# YOLOv11 Detection with SAHI Tiled Inference
+# YOLO26 Detection with optional SAHI tiled inference
 
 model:
-  name: "YOLOv11"
-  variant: "yolo11m"           # medium variant (standard detection)
+  name: "YOLO26"
+  variant: "yolo26m"
   pretrained: true
   task: "detect"
 
 training:
-  epochs: 100
-  batch_size: 16
-  imgsz: 640
+  epochs: 30
+  batch_size: 4
+  min_batch_size: 2
+  imgsz: 1024
   optimizer: "AdamW"
   lr0: 0.001
   lrf: 0.01
   warmup_epochs: 3
-  patience: 20                 # early stopping patience
-  device: "0"                  # GPU device
+  patience: 8
+  device: "0"
   workers: 8
-  seeds: [42, 123, 456]        # 3-seed training
+  seeds: [42]
+  amp: true
+  cache: false
 
 sahi:
   enabled: false
@@ -27,6 +30,7 @@ sahi:
   overlap_width_ratio: 0.2
   postprocess_type: "NMS"
   postprocess_match_threshold: 0.5
+  confidence_threshold: 0.05
 
 augmentation:
   hsv_h: 0.015
@@ -34,5 +38,10 @@ augmentation:
   hsv_v: 0.4
   flipud: 0.5
   fliplr: 0.5
-  mosaic: 1.0
-  mixup: 0.1
+  mosaic: 0.0
+  mixup: 0.0
+
+postprocessing:
+  score_floor: 0.001
+  score_threshold: 0.05
+  score_threshold_grid: [0.01, 0.05, 0.10, 0.20, 0.30, 0.50]

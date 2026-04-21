@@ -1,4 +1,4 @@
-"""Train YOLOv11 on the radar dataset.
+"""Train a YOLO model on the radar dataset.
 
 Usage:
     python -m src.yolo.train --data data/processed/yolo/data.yaml
@@ -8,9 +8,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import yaml
-
-from .model import train_yolov11
+from .model import load_config, train_yolo
 
 
 def main() -> None:
@@ -22,7 +20,7 @@ def main() -> None:
     ap.add_argument("--device", default=None)
     args = ap.parse_args()
 
-    cfg = yaml.safe_load(Path(args.config).read_text())
+    cfg = load_config(args.config)
     if args.device is not None:
         cfg["training"]["device"] = args.device
     seeds = args.seeds or cfg["training"]["seeds"]
@@ -31,8 +29,8 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
 
     for seed in seeds:
-        print(f"\n--- YOLOv11 seed={seed} device={cfg['training']['device']} ---")
-        train_yolov11(args.data, args.config, str(out), seed=seed)
+        print(f"\n--- {cfg['model']['name']} seed={seed} device={cfg['training']['device']} ---")
+        train_yolo(args.data, args.config, str(out), seed=seed, cfg=cfg)
 
 
 if __name__ == "__main__":

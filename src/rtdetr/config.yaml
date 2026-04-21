@@ -7,19 +7,27 @@ model:
   num_classes: 2               # background + target
 
 training:
-  epochs: 72
-  batch_size: 8
-  imgsz: 640
+  epochs: 20
+  batch_size: 4
+  imgsz: 1024
   optimizer: "AdamW"
   lr: 0.0001
   weight_decay: 0.0001
   lr_scheduler: "CosineAnnealingLR"
-  warmup_epochs: 5
+  warmup_epochs: 2
   device: "0"
   workers: 8
-  seeds: [42, 123, 456]
+  seeds: [42]
+  patience: 7
+  amp: true
+  cache: false
 
 augmentation:
   flipud: 0.5
   fliplr: 0.5
-  mosaic: 0.5
+  mosaic: 0.0
+
+postprocessing:
+  score_floor: 0.001
+  score_threshold: 0.05
+  score_threshold_grid: [0.001, 0.002, 0.005, 0.01, 0.05, 0.10, 0.20, 0.30, 0.50]
