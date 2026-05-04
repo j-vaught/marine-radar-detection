@@ -1,8 +1,52 @@
-"""Shared utilities for classical detection methods."""
+"""Connected-component utilities used by the U-Net detector."""
 
 import cv2
 import numpy as np
-from skimage import measure
+from math import atan2, sqrt
+
+
+def _connected_components(mask: np.ndarray) -> tuple[int, np.ndarray, np.ndarray, np.ndarray]:
+    binary = (mask > 0).astype(np.uint8)
+    return cv2.connectedComponentsWithStats(binary, connectivity=8)
+
+
+def _component_bbox(stats_row: np.ndarray) -> list[float]:
+    x = int(stats_row[cv2.CC_STAT_LEFT])
+    y = int(stats_row[cv2.CC_STAT_TOP])
+    w = int(stats_row[cv2.CC_STAT_WIDTH])
+    h = int(stats_row[cv2.CC_STAT_HEIGHT])
+    return [float(x), float(y), float(x + w), float(y + h)]
+
+
+def _component_moments(component_mask: np.ndarray) -> tuple[float, float, float]:
+    ys, xs = np.nonzero(component_mask)
+    area = float(len(xs))
+    if area <= 1.0:
+        return 0.0, 0.0, 0.0
+
+    x_mean = float(xs.mean())
+    y_mean = float(ys.mean())
+    dx = xs.astype(np.float64) - x_mean
+    dy = ys.astype(np.float64) - y_mean
+    mu20 = float(np.dot(dx, dx))
+    mu02 = float(np.dot(dy, dy))
+    mu11 = float(np.dot(dx, dy))
+    return mu20, mu02, mu11
+
+
+def _component_shape_props(component_mask: np.ndarray) -> tuple[float, float]:
+    mu20, mu02, mu11 = _component_moments(component_mask)
+    trace = mu20 + mu02
+    det_term = (mu20 - mu02) ** 2 + 4.0 * (mu11 ** 2)
+    root = sqrt(max(det_term, 0.0))
+    major = 0.5 * (trace + root)
+    minor = 0.5 * (trace - root)
+    if major <= 1e-12:
+        eccentricity = 0.0
+    else:
+        eccentricity = sqrt(max(0.0, 1.0 - minor / major))
+    orientation = 0.5 * atan2(2.0 * mu11, mu20 - mu02)
+    return eccentricity, orientation
 
 
 def dilate_mask(mask: np.ndarray, dilation: int = 0) -> np.ndarray:
@@ -51,15 +95,14 @@ def binary_mask_to_bboxes(
     if dilation > 0:
         mask = dilate_mask(mask, dilation)
 
-    labels = measure.label(mask.astype(np.uint8), connectivity=2)
-    regions = measure.regionprops(labels)
+    num_labels, labels, stats, _ = _connected_components(mask)
 
     bboxes = []
-    for region in regions:
-        if region.area < min_area or region.area > max_area:
+    for label in range(1, num_labels):
+        area = int(stats[label, cv2.CC_STAT_AREA])
+        if area < min_area or area > max_area:
             continue
-        y1, x1, y2, x2 = region.bbox
-        bboxes.append([x1, y1, x2, y2])
+        bboxes.append(_component_bbox(stats[label]))
 
     result = np.array(bboxes, dtype=np.float32).reshape(-1, 4)
     if box_padding > 0 and len(result) > 0:
@@ -79,24 +122,26 @@ def binary_mask_to_bboxes_with_props(
     Returns:
         Tuple of (bboxes, properties) where properties include area, eccentricity, etc.
     """
-    labels = measure.label(mask.astype(np.uint8), connectivity=2)
-    regions = measure.regionprops(labels)
+    num_labels, labels, stats, centroids = _connected_components(mask)
 
     bboxes = []
     props = []
-    for region in regions:
-        if region.area < min_area or region.area > max_area:
-            continue
-        if region.eccentricity < min_eccentricity or region.eccentricity > max_eccentricity:
+    for label in range(1, num_labels):
+        area = int(stats[label, cv2.CC_STAT_AREA])
+        if area < min_area or area > max_area:
             continue
 
-        y1, x1, y2, x2 = region.bbox
-        bboxes.append([x1, y1, x2, y2])
+        component_mask = labels == label
+        eccentricity, orientation = _component_shape_props(component_mask)
+        if eccentricity < min_eccentricity or eccentricity > max_eccentricity:
+            continue
+
+        bboxes.append(_component_bbox(stats[label]))
         props.append({
-            "area": region.area,
-            "eccentricity": region.eccentricity,
-            "centroid": region.centroid,
-            "orientation": region.orientation,
+            "area": area,
+            "eccentricity": eccentricity,
+            "centroid": (float(centroids[label][1]), float(centroids[label][0])),
+            "orientation": orientation,
         })
 
     return np.array(bboxes, dtype=np.float32).reshape(-1, 4), props
@@ -135,24 +180,27 @@ def binary_mask_to_bboxes_with_scores(
     if dilation > 0:
         mask = dilate_mask(mask, dilation)
 
-    labels = measure.label(mask.astype(np.uint8), connectivity=2)
-    regions = measure.regionprops(labels, intensity_image=intensity_image.astype(np.float32))
+    intensity_image = intensity_image.astype(np.float32)
+    num_labels, labels, stats, centroids = _connected_components(mask)
 
     bboxes = []
     raw_scores = []
 
-    for region in regions:
-        if region.area < min_area or region.area > max_area:
+    for label in range(1, num_labels):
+        area = int(stats[label, cv2.CC_STAT_AREA])
+        if area < min_area or area > max_area:
             continue
 
-        y1, x1, y2, x2 = region.bbox
-        bboxes.append([x1, y1, x2, y2])
+        component_mask = labels == label
+        bboxes.append(_component_bbox(stats[label]))
+        component_pixels = intensity_image[component_mask]
 
         if threshold_map is not None:
             # Peak intensity of the component
-            peak = float(region.intensity_image.max())
+            peak = float(component_pixels.max()) if component_pixels.size else 0.0
             # Threshold at the centroid pixel
-            cy, cx = int(round(region.centroid[0])), int(round(region.centroid[1]))
+            cy = int(round(float(centroids[label][1])))
+            cx = int(round(float(centroids[label][0])))
             cy = np.clip(cy, 0, threshold_map.shape[0] - 1)
             cx = np.clip(cx, 0, threshold_map.shape[1] - 1)
             local_thresh = float(threshold_map[cy, cx])
@@ -160,7 +208,7 @@ def binary_mask_to_bboxes_with_scores(
         else:
             # Normalise mean intensity to image scale
             scale = 255.0 if intensity_image.max() > 1.0 else 1.0
-            score = float(region.mean_intensity) / scale
+            score = (float(component_pixels.mean()) / scale) if component_pixels.size else 0.0
 
         raw_scores.append(score)
 

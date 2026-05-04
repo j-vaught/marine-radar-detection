@@ -351,6 +351,7 @@ def main() -> None:
     ap.add_argument("--epochs", type=int, default=None)
     ap.add_argument("--batch-size", type=int, default=None)
     ap.add_argument("--workers", type=int, default=None)
+    ap.add_argument("--patience", type=int, default=None)
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -362,6 +363,8 @@ def main() -> None:
         cfg["training"]["batch_size"] = args.batch_size
     if args.workers is not None:
         cfg["training"]["workers"] = args.workers
+    if args.patience is not None:
+        cfg["training"]["patience"] = args.patience
 
     out_root = Path(args.output_dir)
     out_root.mkdir(parents=True, exist_ok=True)

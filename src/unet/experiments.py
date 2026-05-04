@@ -272,15 +272,33 @@ def main() -> None:
     ap.add_argument("--device", default=None)
     ap.add_argument("--only", nargs="*", default=None)
     ap.add_argument("--resume", action="store_true")
+    ap.add_argument("--epochs", type=int, default=None)
+    ap.add_argument("--batch-size", type=int, default=None)
+    ap.add_argument("--workers", type=int, default=None)
+    ap.add_argument("--patience", type=int, default=None)
+    ap.add_argument("--t-max", type=int, default=None)
     args = ap.parse_args()
 
     cfg = yaml.safe_load(Path(args.config).read_text())
     if args.device is not None:
         cfg["training"]["device"] = args.device
+    if args.epochs is not None:
+        cfg["training"]["epochs"] = args.epochs
+    if args.batch_size is not None:
+        cfg["training"]["batch_size"] = args.batch_size
+    if args.workers is not None:
+        cfg["training"]["workers"] = args.workers
+    if args.patience is not None:
+        cfg["training"]["patience"] = args.patience
+    if args.t_max is not None:
+        cfg["training"]["T_max"] = args.t_max
+    elif args.epochs is not None:
+        cfg["training"]["T_max"] = args.epochs
 
     items = load_segmentation_items(args.ann)
     out_root = Path(args.output_dir)
     out_root.mkdir(parents=True, exist_ok=True)
+    (out_root / "resolved_config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
 
     exps = filter_experiments(build_all(), args.only)
     print(f"[unet] running {len(exps)} experiments")

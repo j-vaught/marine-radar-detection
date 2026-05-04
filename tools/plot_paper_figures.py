@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import json
+import subprocess
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 DATA_IMAGES = ROOT / "data" / "processed" / "images"
 OUT_DIR = RESULTS / "figures" / "paper"
+ZOOM_DIR = OUT_DIR / "failure_zoomed"
+ZOOM_CACHE_DIR = ZOOM_DIR / "_classical_cache"
 
 MATRIX_PATHS = {
     "CFAR": RESULTS / "cfar" / "matrix.csv",
@@ -88,6 +91,11 @@ METHOD_COLORS = {
     "Y26": "#AD9B3A",
 }
 METHOD_PRED_COLORS = {
+    "CA": "#A10F1B",
+    "OS": "#B36B00",
+    "OTSU": "#2E5FA7",
+    "SSOTSU": "#A07E00",
+    "WAV": "#6D7788",
     "UNET": "#2E5FA7",
     "FRCNN": "#8E0013",
     "RTDETR": "#17404B",
@@ -367,6 +375,76 @@ def plot_method_mean_ap50(rows: list[NormalizedRow]) -> None:
     ax.xaxis.set_major_formatter(FuncFormatter(percent_formatter))
     ax.grid(axis="y", visible=False)
     save(fig, "paper_method_mean_ap50")
+
+
+def plot_method_mean_ap50_bottom_legend(rows: list[NormalizedRow]) -> None:
+    values = [
+        (method, mean_metric([row for row in rows if row.method == method], "test_ap50") * 100.0)
+        for method in METHOD_ORDER
+    ]
+    values.sort(key=lambda item: item[1], reverse=True)
+
+    fig, ax = plt.subplots(figsize=(11.4, 5.8))
+    x = np.arange(len(values))
+    bars = ax.bar(
+        x,
+        [value for _, value in values],
+        color=[METHOD_COLORS[method] for method, _ in values],
+        edgecolor=BRAND["black_70"],
+        linewidth=0.6,
+        width=0.72,
+    )
+    ax.set_xticks(x)
+    ax.set_xticklabels([METHOD_LABELS[method] for method, _ in values], rotation=25, ha="right")
+    ax.set_ylabel("Mean AP50 Across Matrix (%)")
+    ax.yaxis.set_major_formatter(FuncFormatter(percent_formatter))
+    ax.grid(axis="x", visible=False)
+    ax.legend(
+        bars,
+        [METHOD_LABELS[method] for method, _ in values],
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.22),
+        ncol=5,
+    )
+    save(fig, "paper_method_mean_ap50_bottom_legend")
+
+
+def plot_method_test_site_ap50_bottom_legend(rows: list[NormalizedRow], test_site: str, stem: str) -> None:
+    values = []
+    for method in METHOD_ORDER:
+        subset = [
+            row
+            for row in rows
+            if row.method == method and test_site in row.test_label
+        ]
+        if not subset:
+            continue
+        values.append((method, mean_metric(subset, "test_ap50") * 100.0))
+    values.sort(key=lambda item: item[1], reverse=True)
+
+    fig, ax = plt.subplots(figsize=(11.4, 5.8))
+    x = np.arange(len(values))
+    bars = ax.bar(
+        x,
+        [value for _, value in values],
+        color=[METHOD_COLORS[method] for method, _ in values],
+        edgecolor=BRAND["black_70"],
+        linewidth=0.6,
+        width=0.72,
+    )
+    ax.set_xticks(x)
+    ax.set_xticklabels([METHOD_LABELS[method] for method, _ in values], rotation=25, ha="right")
+    ax.set_ylabel(f"Mean AP50 On {test_site} Test Site (%)")
+    ax.yaxis.set_major_formatter(FuncFormatter(percent_formatter))
+    ax.grid(axis="x", visible=False)
+    ax.legend(
+        bars,
+        [METHOD_LABELS[method] for method, _ in values],
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.22),
+        ncol=5,
+    )
+    save(fig, stem)
 
 
 def plot_localization_retention(rows: list[NormalizedRow]) -> None:
@@ -895,6 +973,407 @@ def overlay_image(file_name: str, gt_boxes: list[list[float]], pred_boxes: list[
     return image
 
 
+def load_font(size: int) -> ImageFont.ImageFont:
+    for candidate in ("DejaVuSans.ttf", "Arial.ttf"):
+        try:
+            return ImageFont.truetype(candidate, size=size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def crop_bounds_from_box_sets(
+    image_size: tuple[int, int],
+    box_sets: list[list[list[float]]],
+    *,
+    pad: int = 72,
+    min_size: int = 320,
+) -> tuple[int, int, int, int]:
+    image_w, image_h = image_size
+    coords: list[tuple[float, float, float, float]] = []
+    for box_set in box_sets:
+        for x, y, w, h in box_set:
+            coords.append((x, y, x + w, y + h))
+
+    if not coords:
+        return 0, 0, image_w, image_h
+
+    x1 = min(coord[0] for coord in coords)
+    y1 = min(coord[1] for coord in coords)
+    x2 = max(coord[2] for coord in coords)
+    y2 = max(coord[3] for coord in coords)
+
+    box_w = x2 - x1
+    box_h = y2 - y1
+    crop_size = max(min_size, int(max(box_w, box_h) + 2 * pad))
+    crop_size = min(crop_size, max(image_w, image_h))
+
+    cx = 0.5 * (x1 + x2)
+    cy = 0.5 * (y1 + y2)
+
+    left = int(round(cx - crop_size / 2))
+    top = int(round(cy - crop_size / 2))
+    left = max(0, min(left, image_w - crop_size))
+    top = max(0, min(top, image_h - crop_size))
+    right = min(image_w, left + crop_size)
+    bottom = min(image_h, top + crop_size)
+    return left, top, right, bottom
+
+
+def box_center(box: list[float]) -> tuple[float, float]:
+    x, y, w, h = box
+    return x + 0.5 * w, y + 0.5 * h
+
+
+def focus_bounds(boxes: list[list[float]], pad: int = 0) -> tuple[float, float, float, float]:
+    x1 = min(box[0] for box in boxes) - pad
+    y1 = min(box[1] for box in boxes) - pad
+    x2 = max(box[0] + box[2] for box in boxes) + pad
+    y2 = max(box[1] + box[3] for box in boxes) + pad
+    return x1, y1, x2, y2
+
+
+def boxes_with_centers_in_bounds(boxes: list[list[float]], bounds: tuple[float, float, float, float]) -> list[list[float]]:
+    x1, y1, x2, y2 = bounds
+    kept = []
+    for box in boxes:
+        cx, cy = box_center(box)
+        if x1 <= cx <= x2 and y1 <= cy <= y2:
+            kept.append(box)
+    return kept
+
+
+def select_focus_gt_cluster(gt_boxes: list[list[float]], pred_groups: list[list[list[float]]], radius: float = 180.0) -> list[list[float]]:
+    if not gt_boxes:
+        return []
+
+    support = []
+    for gt_box in gt_boxes:
+        support.append(sum(1 for preds in pred_groups if any(bbox_iou(gt_box, pred_box) >= 0.5 for pred_box in preds)))
+    min_support = min(support)
+    candidate_indices = [idx for idx, value in enumerate(support) if value == min_support]
+    if len(candidate_indices) == 1:
+        return [gt_boxes[candidate_indices[0]]]
+
+    candidate_boxes = [gt_boxes[idx] for idx in candidate_indices]
+    centers = [box_center(box) for box in candidate_boxes]
+    best_seed = 0
+    best_count = -1
+    for idx, (cx, cy) in enumerate(centers):
+        count = sum(1 for ox, oy in centers if (cx - ox) ** 2 + (cy - oy) ** 2 <= radius ** 2)
+        if count > best_count:
+            best_count = count
+            best_seed = idx
+    sx, sy = centers[best_seed]
+    cluster = [
+        box
+        for box, (cx, cy) in zip(candidate_boxes, centers, strict=True)
+        if (sx - cx) ** 2 + (sy - cy) ** 2 <= radius ** 2
+    ]
+    return cluster or [candidate_boxes[best_seed]]
+
+
+def local_failure_crop(
+    image_size: tuple[int, int],
+    gt_boxes: list[list[float]],
+    pred_groups: list[list[list[float]]],
+    *,
+    focus_pad: int = 140,
+    crop_pad: int = 60,
+    min_size: int = 320,
+) -> tuple[tuple[int, int, int, int], list[list[float]], list[list[list[float]]]]:
+    focus_gt = select_focus_gt_cluster(gt_boxes, pred_groups)
+    seed_boxes = focus_gt or gt_boxes
+    if not seed_boxes:
+        crop_box = (0, 0, image_size[0], image_size[1])
+        return crop_box, [], [[] for _ in pred_groups]
+
+    focus_box = focus_bounds(seed_boxes, pad=focus_pad)
+    local_gt = boxes_with_centers_in_bounds(gt_boxes, focus_box) or seed_boxes
+    local_preds = [boxes_with_centers_in_bounds(pred_boxes, focus_box) for pred_boxes in pred_groups]
+    crop_box = crop_bounds_from_box_sets(image_size, [local_gt, *local_preds], pad=crop_pad, min_size=min_size)
+
+    crop_bounds = (float(crop_box[0]), float(crop_box[1]), float(crop_box[2]), float(crop_box[3]))
+    cropped_gt = boxes_with_centers_in_bounds(gt_boxes, crop_bounds) or local_gt
+    cropped_preds = [boxes_with_centers_in_bounds(pred_boxes, crop_bounds) for pred_boxes in pred_groups]
+    return crop_box, cropped_gt, cropped_preds
+
+
+def save_zoom_panels(
+    file_name: str,
+    panels: list[dict],
+    crop_box: tuple[int, int, int, int],
+    out_dir: Path,
+    stem: str,
+) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for panel in panels:
+        label_slug = panel["label"].lower().replace(" ", "_").replace("-", "")
+        overlay = overlay_image(
+            file_name,
+            panel["gt_boxes"],
+            panel.get("pred_boxes", []),
+            panel["pred_color"],
+            max_preds=80,
+        )
+        overlay.crop(crop_box).save(out_dir / f"{stem}_{label_slug}.png")
+
+
+def write_subset_coco(source_gt_path: Path, image_ids: list[int], out_path: Path) -> dict:
+    coco = json.load(source_gt_path.open())
+    keep = set(image_ids)
+    subset = {
+        key: value
+        for key, value in coco.items()
+        if key not in {"images", "annotations"}
+    }
+    subset["images"] = [image for image in coco["images"] if int(image["id"]) in keep]
+    subset["annotations"] = [ann for ann in coco["annotations"] if int(ann["image_id"]) in keep]
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(subset))
+    return subset
+
+
+def run_checked(cmd: list[str]) -> None:
+    proc = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"command failed ({proc.returncode}): {' '.join(cmd)}\n"
+            f"stdout:\n{proc.stdout}\n\nstderr:\n{proc.stderr}"
+        )
+
+
+def ensure_classical_subset_payloads(
+    scenario_tag: str,
+    source_gt_path: Path,
+    image_ids: list[int],
+    direction_tag: str,
+) -> dict[str, Path]:
+    cache_root = ZOOM_CACHE_DIR / scenario_tag
+    subset_gt_path = cache_root / "subset_gt.json"
+    subset = write_subset_coco(source_gt_path, image_ids, subset_gt_path)
+    subset_images = subset["images"]
+
+    payload_dirs: dict[str, Path] = {}
+    for method in ("CA", "OS", "OTSU", "SSOTSU", "WAV"):
+        method_dir = cache_root / method
+        method_dir.mkdir(parents=True, exist_ok=True)
+        (method_dir / "test_gt.json").write_text(subset_gt_path.read_text())
+        payload_dirs[method] = method_dir
+
+    ensure_cfar_subset_predictions(payload_dirs["CA"], subset_images, direction_tag, method="CA")
+    ensure_cfar_subset_predictions(payload_dirs["OS"], subset_images, direction_tag, method="OS")
+    ensure_otsu_subset_predictions(payload_dirs["OTSU"], subset_gt_path, direction_tag, method="OTSU")
+    ensure_otsu_subset_predictions(payload_dirs["SSOTSU"], subset_gt_path, direction_tag, method="SSOTSU")
+    ensure_wavelet_subset_predictions(payload_dirs["WAV"], subset_gt_path, direction_tag)
+    return payload_dirs
+
+
+def ensure_cfar_subset_predictions(
+    out_dir: Path,
+    subset_images: list[dict],
+    direction_tag: str,
+    *,
+    method: str,
+) -> None:
+    pred_path = out_dir / "test_predictions.json"
+    if pred_path.exists():
+        return
+
+    import cv2
+    import numpy as np
+
+    from src.cfar.detector import detect_cfar
+
+    params = json.load((RESULTS / "cfar" / "per_experiment" / f"T-{method}-{direction_tag}.json").open())
+    center = (531, 515)
+    radius = 466
+    predictions: list[dict] = []
+    for info in subset_images:
+        image = cv2.imread(str(DATA_IMAGES / info["file_name"]), cv2.IMREAD_GRAYSCALE)
+        if image is None:
+            continue
+        mask = np.zeros(image.shape, dtype=np.uint8)
+        cv2.circle(mask, center, radius, 255, -1)
+        image = cv2.bitwise_and(image, mask)
+        image_f = image.astype(np.float32) / 255.0
+        boxes, _, scores = detect_cfar(
+            image_f,
+            guard=(int(params["win_window_guard"]), int(params["win_window_guard"])),
+            ref=(int(params["win_window_ref"]), int(params["win_window_ref"])),
+            pfa=float(params["win_pfa"]),
+            mode=method,
+            k_os=float(params["win_os_k"] or 0.75),
+            min_area=int(params["win_min_area"]),
+        )
+        if len(boxes):
+            cx = (boxes[:, 0] + boxes[:, 2]) / 2
+            cy = (boxes[:, 1] + boxes[:, 3]) / 2
+            keep = np.hypot(cx - center[0], cy - center[1]) <= radius
+            boxes = boxes[keep]
+            scores = scores[keep]
+            xywh = boxes.astype(float).copy()
+            xywh[:, 2] -= xywh[:, 0]
+            xywh[:, 3] -= xywh[:, 1]
+            predictions.extend(
+                {
+                    "image_id": int(info["id"]),
+                    "category_id": 1,
+                    "bbox": xywh[idx].tolist(),
+                    "score": float(scores[idx]),
+                }
+                for idx in range(len(xywh))
+            )
+
+    pred_path.write_text(json.dumps(predictions))
+
+
+def ensure_otsu_subset_predictions(
+    out_dir: Path,
+    subset_gt_path: Path,
+    direction_tag: str,
+    *,
+    method: str,
+) -> None:
+    pred_path = out_dir / "test_predictions.json"
+    if pred_path.exists():
+        return
+
+    params = json.load((RESULTS / "otsu" / "per_experiment" / f"T-{method}-{direction_tag}.json").open())
+    binary = ROOT / "src" / "otsu" / "target" / "release" / "otsu"
+    cmd = [str(binary)] if binary.exists() else [
+        "cargo",
+        "run",
+        "--release",
+        "--manifest-path",
+        str(ROOT / "src" / "otsu" / "Cargo.toml"),
+        "--",
+    ]
+    cmd.extend(
+        [
+            "run",
+            "--ann",
+            str(subset_gt_path),
+            "--images",
+            str(DATA_IMAGES),
+            "--out",
+            str(pred_path),
+            "--backend",
+            "cpu",
+            "--method",
+            "otsu" if method == "OTSU" else "ssotsu",
+            "--min-area",
+            str(int(params["win_min_area"])),
+            "--max-area",
+            str(int(params["win_max_area"])),
+            "--min-eccentricity",
+            str(float(params["win_min_eccentricity"])),
+            "--max-eccentricity",
+            str(float(params["win_max_eccentricity"])),
+            "--dilation",
+            str(int(params["win_dilation"])),
+            "--box-padding",
+            str(int(params["win_box_padding"])),
+        ]
+    )
+    if method == "SSOTSU":
+        cmd.extend(
+            [
+                "--block-size",
+                str(int(params["win_block_size"])),
+                "--seed-threshold-factor",
+                str(float(params["win_seed_threshold_factor"])),
+                "--region-grow-threshold",
+                str(float(params["win_region_grow_threshold"])),
+            ]
+        )
+    run_checked(cmd)
+
+
+def ensure_wavelet_subset_predictions(out_dir: Path, subset_gt_path: Path, direction_tag: str) -> None:
+    pred_path = out_dir / "test_predictions.json"
+    if pred_path.exists():
+        return
+
+    params = json.load((RESULTS / "wavelet" / "per_experiment" / f"T-WAV-{direction_tag}.json").open())
+    binary = ROOT / "target" / "release" / "wavelet"
+    cmd = [str(binary)] if binary.exists() else [
+        "cargo",
+        "run",
+        "--release",
+        "--manifest-path",
+        str(ROOT / "src" / "wavelet" / "Cargo.toml"),
+        "--",
+    ]
+    cmd.extend(
+        [
+            "run",
+            "--ann",
+            str(subset_gt_path),
+            "--images",
+            str(DATA_IMAGES),
+            "--out",
+            str(pred_path),
+            "--backend",
+            "cpu",
+            "--level",
+            str(int(params["win_level"])),
+            "--threshold-sigma",
+            str(float(params["win_threshold_sigma"])),
+            "--min-area",
+            str(int(params["win_min_area"])),
+            "--max-area",
+            str(int(params["win_max_area"])),
+            "--dilation",
+            str(int(params["win_dilation"])),
+            "--box-padding",
+            str(int(params["win_box_padding"])),
+        ]
+    )
+    run_checked(cmd)
+
+
+def compose_zoom_strip(
+    file_name: str,
+    panels: list[dict],
+    crop_box: tuple[int, int, int, int],
+    out_path: Path,
+) -> None:
+    crop_w = crop_box[2] - crop_box[0]
+    crop_h = crop_box[3] - crop_box[1]
+    scale = max(1.0, 520.0 / max(crop_w, crop_h))
+    panel_w = int(round(crop_w * scale))
+    panel_h = int(round(crop_h * scale))
+    header_h = 48
+    footer_h = 36
+    gap = 18
+    canvas_w = len(panels) * panel_w + (len(panels) - 1) * gap
+    canvas_h = header_h + panel_h + footer_h
+    canvas = Image.new("RGB", (canvas_w, canvas_h), BRAND["white"])
+
+    title_font = load_font(28)
+    meta_font = load_font(22)
+
+    for idx, panel in enumerate(panels):
+        label = panel["label"]
+        gt_boxes = panel["gt_boxes"]
+        pred_boxes = panel.get("pred_boxes", [])
+        pred_color = panel["pred_color"]
+        footer = panel["footer"]
+        overlay = overlay_image(file_name, gt_boxes, pred_boxes, pred_color, max_preds=80)
+        crop = overlay.crop(crop_box)
+        if scale != 1.0:
+            crop = crop.resize((panel_w, panel_h), Image.Resampling.LANCZOS)
+        x = idx * (panel_w + gap)
+        canvas.paste(crop, (x, header_h))
+        draw = ImageDraw.Draw(canvas)
+        draw.text((x + 8, 8), label, fill=BRAND["black_90"], font=title_font)
+        draw.text((x + 8, header_h + panel_h + 6), footer, fill=BRAND["black_70"], font=meta_font)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(out_path)
+
+
 def select_hard_transfer_images() -> list[int]:
     base_dir = RESULTS / "yolo26_matrix" / "T-Y26-MvDc"
     image_by_id, gt_by_id, _ = load_experiment_payload(base_dir)
@@ -1034,6 +1513,197 @@ def plot_failure_rtdetr_collapse() -> None:
     save(fig, "paper_failure_rtdetr_collapse_dcmv", svg=False)
 
 
+def top_pred_boxes(pred_by_id: dict[int, list[dict]], image_id: int, limit: int) -> list[list[float]]:
+    preds = sorted(pred_by_id.get(image_id, []), key=lambda pred: float(pred.get("score", 0.0)), reverse=True)
+    return [pred["bbox"] for pred in preds[:limit]]
+
+
+def render_zoomed_hard_transfer_examples() -> None:
+    scenario_dirs = {
+        "U-Net": RESULTS / "unet_matrix" / "T-UNET-MvDc",
+        "Faster R-CNN": RESULTS / "faster_rcnn_matrix" / "T-FRCNN-MvDc",
+        "YOLO26": RESULTS / "yolo26_matrix" / "T-Y26-MvDc",
+    }
+    image_by_id, gt_by_id, _ = load_experiment_payload(scenario_dirs["YOLO26"])
+    pred_payloads = {label: load_experiment_payload(path)[2] for label, path in scenario_dirs.items()}
+    chosen_ids = select_hard_transfer_images()
+    out_dir = ZOOM_DIR / "hard_transfer_mvdc"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    color_key = {
+        "U-Net": "UNET",
+        "Faster R-CNN": "FRCNN",
+        "YOLO26": "Y26",
+    }
+
+    for image_id in chosen_ids:
+        info = image_by_id[image_id]
+        gt_boxes = [ann["bbox"] for ann in gt_by_id.get(image_id, [])]
+        unet_boxes = top_pred_boxes(pred_payloads["U-Net"], image_id, 18)
+        frcnn_boxes = top_pred_boxes(pred_payloads["Faster R-CNN"], image_id, 20)
+        yolo_boxes = top_pred_boxes(pred_payloads["YOLO26"], image_id, 20)
+        crop_box, local_gt, local_pred_groups = local_failure_crop(
+            Image.open(DATA_IMAGES / info["file_name"]).size,
+            gt_boxes,
+            [unet_boxes, frcnn_boxes, yolo_boxes],
+            focus_pad=160,
+            crop_pad=56,
+            min_size=300,
+        )
+        local_unet, local_frcnn, local_yolo = local_pred_groups
+
+        panels = [
+            {
+                "label": "Ground Truth",
+                "gt_boxes": local_gt,
+                "pred_boxes": [],
+                "pred_color": BRAND["black_50"],
+                "footer": f"{info['file_name']}  GT={len(local_gt)} local / {len(gt_boxes)} total",
+            }
+        ]
+        for label, pred_boxes in (
+            ("U-Net", local_unet),
+            ("Faster R-CNN", local_frcnn),
+            ("YOLO26", local_yolo),
+        ):
+            matched_gts, _ = match_stats(local_gt, pred_boxes)
+            panels.append(
+                {
+                    "label": label,
+                    "gt_boxes": local_gt,
+                    "pred_boxes": pred_boxes,
+                    "pred_color": METHOD_PRED_COLORS[color_key[label]],
+                    "footer": f"match={matched_gts}/{len(local_gt)} preds={len(pred_boxes)}",
+                }
+            )
+
+        stem = Path(info["file_name"]).stem.lower()
+        save_zoom_panels(info["file_name"], panels, crop_box, out_dir, stem)
+        compose_zoom_strip(info["file_name"], panels, crop_box, out_dir / f"{stem}_zoom.png")
+
+
+def render_zoomed_rtdetr_collapse_examples() -> None:
+    scenario_dirs = {
+        "RT-DETR": RESULTS / "rtdetr_matrix" / "T-RTDETR-DcMv",
+        "YOLO26": RESULTS / "yolo26_matrix" / "T-Y26-DcMv",
+    }
+    image_by_id, gt_by_id, rtdetr_pred_by_id = load_experiment_payload(scenario_dirs["RT-DETR"])
+    _, _, yolo_pred_by_id = load_experiment_payload(scenario_dirs["YOLO26"])
+    chosen_ids = select_rtdetr_collapse_images()
+    out_dir = ZOOM_DIR / "rtdetr_collapse_dcmv"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for image_id in chosen_ids:
+        info = image_by_id[image_id]
+        gt_boxes = [ann["bbox"] for ann in gt_by_id.get(image_id, [])]
+        rtdetr_boxes = top_pred_boxes(rtdetr_pred_by_id, image_id, 50)
+        yolo_boxes = top_pred_boxes(yolo_pred_by_id, image_id, 20)
+        crop_box, local_gt, local_pred_groups = local_failure_crop(
+            Image.open(DATA_IMAGES / info["file_name"]).size,
+            gt_boxes,
+            [rtdetr_boxes, yolo_boxes],
+            focus_pad=150,
+            crop_pad=60,
+            min_size=300,
+        )
+        local_rtdetr, local_yolo = local_pred_groups
+
+        rtdetr_match, _ = match_stats(local_gt, local_rtdetr)
+        yolo_match, _ = match_stats(local_gt, local_yolo)
+        panels = [
+            {
+                "label": "Ground Truth",
+                "gt_boxes": local_gt,
+                "pred_boxes": [],
+                "pred_color": BRAND["black_50"],
+                "footer": f"{info['file_name']}  GT={len(local_gt)} local / {len(gt_boxes)} total",
+            },
+            {
+                "label": "RT-DETR",
+                "gt_boxes": local_gt,
+                "pred_boxes": local_rtdetr,
+                "pred_color": METHOD_PRED_COLORS["RTDETR"],
+                "footer": f"match={rtdetr_match}/{len(local_gt)} preds={len(local_rtdetr)}",
+            },
+            {
+                "label": "YOLO26",
+                "gt_boxes": local_gt,
+                "pred_boxes": local_yolo,
+                "pred_color": METHOD_PRED_COLORS["Y26"],
+                "footer": f"match={yolo_match}/{len(local_gt)} preds={len(local_yolo)}",
+            },
+        ]
+
+        stem = Path(info["file_name"]).stem.lower()
+        save_zoom_panels(info["file_name"], panels, crop_box, out_dir, stem)
+        compose_zoom_strip(info["file_name"], panels, crop_box, out_dir / f"{stem}_zoom.png")
+
+
+def render_zoomed_classical_examples() -> None:
+    scenarios = [
+        (
+            "hard_transfer_mvdc_classical",
+            RESULTS / "yolo26_matrix" / "T-Y26-MvDc" / "test_gt.json",
+            select_hard_transfer_images(),
+            "MvDc",
+        ),
+        (
+            "rtdetr_collapse_dcmv_classical",
+            RESULTS / "yolo26_matrix" / "T-Y26-DcMv" / "test_gt.json",
+            select_rtdetr_collapse_images(),
+            "DcMv",
+        ),
+    ]
+
+    labels = ["CA-CFAR", "OS-CFAR", "Otsu", "SS-Otsu", "Wavelet"]
+    method_keys = ["CA", "OS", "OTSU", "SSOTSU", "WAV"]
+
+    for scenario_tag, source_gt_path, chosen_ids, direction_tag in scenarios:
+        payload_dirs = ensure_classical_subset_payloads(scenario_tag, source_gt_path, chosen_ids, direction_tag)
+        out_dir = ZOOM_DIR / scenario_tag
+        out_dir.mkdir(parents=True, exist_ok=True)
+        image_by_id, gt_by_id, _ = load_experiment_payload(payload_dirs["CA"])
+        pred_payloads = {method: load_experiment_payload(path)[2] for method, path in payload_dirs.items()}
+
+        for image_id in chosen_ids:
+            info = image_by_id[image_id]
+            gt_boxes = [ann["bbox"] for ann in gt_by_id.get(image_id, [])]
+            pred_groups = [top_pred_boxes(pred_payloads[method], image_id, 24) for method in method_keys]
+            crop_box, local_gt, local_pred_groups = local_failure_crop(
+                Image.open(DATA_IMAGES / info["file_name"]).size,
+                gt_boxes,
+                pred_groups,
+                focus_pad=170,
+                crop_pad=56,
+                min_size=300,
+            )
+
+            panels = [
+                {
+                    "label": "Ground Truth",
+                    "gt_boxes": local_gt,
+                    "pred_boxes": [],
+                    "pred_color": BRAND["black_50"],
+                    "footer": f"{info['file_name']}  GT={len(local_gt)} local / {len(gt_boxes)} total",
+                }
+            ]
+            for label, method_key, pred_boxes in zip(labels, method_keys, local_pred_groups, strict=True):
+                matched_gts, _ = match_stats(local_gt, pred_boxes)
+                panels.append(
+                    {
+                        "label": label,
+                        "gt_boxes": local_gt,
+                        "pred_boxes": pred_boxes,
+                        "pred_color": METHOD_PRED_COLORS[method_key],
+                        "footer": f"match={matched_gts}/{len(local_gt)} preds={len(pred_boxes)}",
+                    }
+                )
+
+            stem = Path(info["file_name"]).stem.lower()
+            save_zoom_panels(info["file_name"], panels, crop_box, out_dir, stem)
+            compose_zoom_strip(info["file_name"], panels, crop_box, out_dir / f"{stem}_zoom.png")
+
+
 def main() -> None:
     configure_matplotlib()
     rows = normalize_rows()
@@ -1043,6 +1713,8 @@ def main() -> None:
     plot_family_condition_metric(rows, "test_ap", "paper_ap_by_condition_families", "AP (%)")
     plot_family_condition_metric(rows, "test_ap75", "paper_ap75_by_condition_families", "AP75 (%)")
     plot_method_mean_ap50(rows)
+    plot_method_mean_ap50_bottom_legend(rows)
+    plot_method_test_site_ap50_bottom_legend(rows, "DAAN", "paper_method_mean_ap50_daan_bottom_legend")
     plot_localization_retention(rows)
     plot_method_mean_rank(rows)
     plot_pareto_runtime(rows)
@@ -1127,6 +1799,9 @@ def main() -> None:
 
     plot_failure_hard_transfer()
     plot_failure_rtdetr_collapse()
+    render_zoomed_hard_transfer_examples()
+    render_zoomed_rtdetr_collapse_examples()
+    render_zoomed_classical_examples()
 
 
 if __name__ == "__main__":

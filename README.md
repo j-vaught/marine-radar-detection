@@ -3,8 +3,8 @@
 A cross-paradigm benchmark of 8 object detection methods — 4 classical and 4 deep learning — on the DLR DAAN / DARC / MANV corpus.
 
 **Authors:** J.C. Vaught and Ty Dangerfield — University of South Carolina CSCE 763.
-**Paper:** [`report/radar_detection_report.pdf`](report/radar_detection_report.pdf)
-**Data:** [release `data-v1.0`](https://github.com/j-vaught/marine-radar-detection/releases/tag/data-v1.0)
+**Paper materials:** [paper/README.md](paper/README.md)
+**Release:** [release `code-v1.2`](https://github.com/j-vaught/marine-radar-detection/releases/tag/code-v1.2)
 
 ## Methods
 
@@ -33,7 +33,7 @@ marine-radar-detection/
 │       ├── images/            # 2,239 PPI PNGs (from data-v1.0)
 │       └── annotations/       # COCO JSONs (full + tiled)
 ├── dist/                      # gitignored — release tarballs
-├── report/                    # Typst source + compiled PDFs
+├── paper/                     # replication / publication docs
 ├── src/
 │   ├── cfar/ morphological/ otsu/ wavelet/          # classical
 │   └── yolo/ rtdetr/ faster_rcnn/ unet/             # deep learning
@@ -57,8 +57,8 @@ pip install -e ".[dev]"
 ## Fetch the dataset
 
 ```bash
-curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/code-v1.1/processed-v1.tar.zst
-curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/code-v1.1/processed-v1.tar.zst.sha256
+curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/code-v1.2/processed-v1.tar.zst
+curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/code-v1.2/processed-v1.tar.zst.sha256
 sha256sum -c processed-v1.tar.zst.sha256
 zstd -dc processed-v1.tar.zst | tar -xf - -C data/
 ```
@@ -129,10 +129,27 @@ Each `infer.py` / `run.py` writes a `results/<method>/*_predictions.json` and pr
 
 ## Reproducing the paper
 
-The PDF at [`report/radar_detection_report.pdf`](report/radar_detection_report.pdf) corresponds to the AIS-anchored GT, calibration, and paper's split convention (MANV/DARC/DAAN → train/val/test). Python methods keep their tunables in `config.yaml`; native methods expose defaults and search grids in their Rust sources.
+Start here:
 
-Typst source:
+- [paper/README.md](paper/README.md) for the publication package layout
+- [paper/PUBLICATION_CHECKLIST.md](paper/PUBLICATION_CHECKLIST.md) for what still has to be committed or uploaded before everything is truly public
+- [results/figures/paper/README.md](results/figures/paper/README.md) for the figure inventory
+- [results/figures/paper/DISCUSSION.md](results/figures/paper/DISCUSSION.md) for the paper-ready results narrative
+
+The ignored result inputs used by the paper figures are bundled with:
 
 ```bash
-typst compile report/report.typ report/radar_detection_report.pdf
+./.venv/bin/python tools/package_paper_artifacts.py
+```
+
+This writes `dist/paper-artifacts-v1.tar.zst` and `dist/paper-artifacts-v1.tar.zst.sha256`. The bundle carries the matrix CSVs, per-experiment summaries, TIDE outputs, the full paper figure pack, and the specific prediction payloads needed for the failure-analysis panels.
+
+To fetch the published paper bundle from GitHub instead of building it locally:
+
+```bash
+curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/code-v1.2/paper-artifacts-v1.tar.zst
+curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/code-v1.2/paper-artifacts-v1.tar.zst.sha256
+sha256sum -c paper-artifacts-v1.tar.zst.sha256
+tar --zstd -xf paper-artifacts-v1.tar.zst
+rsync -a paper-artifacts-v1/repo_overlay/ .
 ```
