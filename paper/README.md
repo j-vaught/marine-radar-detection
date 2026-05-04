@@ -2,6 +2,8 @@
 
 This repository is the codebase for the study, but the complete publication package is split across Git-tracked source and release-sized result artifacts.
 
+The GitHub repository is currently private. A collaborator can use the release assets below only if they already have access to the repo and have authenticated with `gh auth login`.
+
 ## What should be public
 
 - Git repo: `src/`, `tools/`, `paper/`, the top-level `README.md`, and the tracked figure/discussion files under `results/figures/paper/`.
@@ -37,8 +39,7 @@ The bundle includes a `manifest.json` with file hashes plus Git metadata from th
 After downloading or building the bundle:
 
 ```bash
-curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/code-v1.2/paper-artifacts-v1.tar.zst
-curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/code-v1.2/paper-artifacts-v1.tar.zst.sha256
+gh release download code-v1.3 -p 'paper-artifacts-v1.tar.zst' -p 'paper-artifacts-v1.tar.zst.sha256'
 sha256sum -c paper-artifacts-v1.tar.zst.sha256
 tar --zstd -xf paper-artifacts-v1.tar.zst
 rsync -a paper-artifacts-v1/repo_overlay/ /path/to/marine-radar-detection/

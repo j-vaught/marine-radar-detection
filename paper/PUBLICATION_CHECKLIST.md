@@ -12,6 +12,7 @@ Use this checklist before telling someone that "everything is on GitHub."
 4. In the release notes, state the commit SHA used to build the bundle and mention that the tarball overlays the repo at `repo_overlay/`.
 5. Verify from a clean clone:
    - checkout the release tag
+   - if the repo is still private, confirm the collaborator already has access
    - download the dataset asset
    - download the paper-artifacts asset
    - extract `repo_overlay/` into the clone

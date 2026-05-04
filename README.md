@@ -4,7 +4,7 @@ A cross-paradigm benchmark of 8 object detection methods — 4 classical and 4 d
 
 **Authors:** J.C. Vaught and Ty Dangerfield — University of South Carolina CSCE 763.
 **Paper materials:** [paper/README.md](paper/README.md)
-**Release:** [release `code-v1.2`](https://github.com/j-vaught/marine-radar-detection/releases/tag/code-v1.2)
+**Release:** [release `code-v1.3`](https://github.com/j-vaught/marine-radar-detection/releases/tag/code-v1.3)
 
 ## Methods
 
@@ -56,9 +56,10 @@ pip install -e ".[dev]"
 
 ## Fetch the dataset
 
+This repository is currently private. The commands below assume the user already has GitHub access and has authenticated the GitHub CLI with `gh auth login`.
+
 ```bash
-curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/code-v1.2/processed-v1.tar.zst
-curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/code-v1.2/processed-v1.tar.zst.sha256
+gh release download code-v1.3 -p 'processed-v1.tar.zst' -p 'processed-v1.tar.zst.sha256'
 sha256sum -c processed-v1.tar.zst.sha256
 zstd -dc processed-v1.tar.zst | tar -xf - -C data/
 ```
@@ -147,8 +148,7 @@ This writes `dist/paper-artifacts-v1.tar.zst` and `dist/paper-artifacts-v1.tar.z
 To fetch the published paper bundle from GitHub instead of building it locally:
 
 ```bash
-curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/code-v1.2/paper-artifacts-v1.tar.zst
-curl -LO https://github.com/j-vaught/marine-radar-detection/releases/download/code-v1.2/paper-artifacts-v1.tar.zst.sha256
+gh release download code-v1.3 -p 'paper-artifacts-v1.tar.zst' -p 'paper-artifacts-v1.tar.zst.sha256'
 sha256sum -c paper-artifacts-v1.tar.zst.sha256
 tar --zstd -xf paper-artifacts-v1.tar.zst
 rsync -a paper-artifacts-v1/repo_overlay/ .
