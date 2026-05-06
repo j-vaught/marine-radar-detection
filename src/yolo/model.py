@@ -167,23 +167,3 @@ def predict_sahi(
         )
 
     return predictions
-
-
-def train_yolov11(
-    data_yaml: str | Path,
-    config_path: str | Path,
-    output_dir: str | Path,
-    seed: int = 42,
-):
-    """Backward-compatible alias for the older YOLO11 entrypoint."""
-    return train_yolo(data_yaml, config_path, output_dir, seed=seed)
-
-
-def predict_yolov11(
-    model_path: str | Path,
-    image: np.ndarray,
-    conf: float = 0.25,
-    device: str | int = "0",
-) -> np.ndarray:
-    """Backward-compatible alias for the older YOLO11 entrypoint."""
-    return predict_yolo(model_path, image, conf=conf, device=device)
