@@ -2451,7 +2451,9 @@
     "patience": 12,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2478,7 +2480,9 @@
     "patience": 12,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2505,7 +2509,9 @@
     "patience": 12,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2532,7 +2538,9 @@
     "patience": 12,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2559,7 +2567,9 @@
     "patience": 12,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2586,7 +2596,9 @@
     "patience": 12,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2613,7 +2625,9 @@
     "patience": 12,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2640,7 +2654,9 @@
     "patience": 12,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2667,7 +2683,9 @@
     "patience": 12,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2695,7 +2713,9 @@
     "patience": 8,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2723,7 +2743,9 @@
     "patience": 8,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2751,7 +2773,9 @@
     "patience": 8,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2779,7 +2803,9 @@
     "patience": 8,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2807,7 +2833,9 @@
     "patience": 8,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2835,7 +2863,9 @@
     "patience": 8,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2863,7 +2893,9 @@
     "patience": 8,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2891,7 +2923,9 @@
     "patience": 8,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   },
   {
     "ann": "{data}/annotations/all.json",
@@ -2919,6 +2953,8 @@
     "patience": 8,
     "overfit": false,
     "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
-    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet",
+    "match_core_gpu_model": true,
+    "paired_environment_sha256": "9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22"
   }
 ]

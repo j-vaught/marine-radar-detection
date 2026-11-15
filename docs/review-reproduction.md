@@ -56,7 +56,7 @@ The split sorts each site by its numeric frame index. At the floor-rounded 15%, 
 
 The checked-in manifest defines 110 jobs for a fresh run, comprising 17 source-only diagnostics and 93 benchmark jobs. Four learned models use five seeds across three sources for 60 core fits. Five deterministic classical methods use one source parameter selection per site for 15 core jobs. Faster R-CNN and YOLO26 each run the adjacency arm on three sources with seeds 0–2 for another 18 learned jobs. The 93 benchmark jobs produce 279 destination evaluations. The diagnostic jobs have empty `eval_targets`. They comprise 12 learned smoke fits with a 32-frame source training subset and five classical checks with diagnostic candidates. Earlier smoke attempts and the three [Wavelet extension studies](../src/revision/wavelet_study.md) are tracked separately from the matrix.
 
-For replay of the archived revision, use the resolved job file saved under `analysis/manifests/jobs-4974b11959f16c9b4ea803bbebfc1db65d98d271112b385e09bd3eac49ac1c0b.json` on COMECH 2080. Its SHA-256 is `4974b11959f16c9b4ea803bbebfc1db65d98d271112b385e09bd3eac49ac1c0b`. It retains the 110 job IDs and adds the runtime repair fields to four existing YOLO26 jobs.
+For replay of the archived revision, use the resolved job file saved under `analysis/manifests/jobs-060fe5bf858e95e210a513226059782f2e9be4ce90f3f4896a54c9632fbcf502.json` on COMECH 2080. Its SHA-256 is `060fe5bf858e95e210a513226059782f2e9be4ce90f3f4896a54c9632fbcf502`. It retains the 110 job IDs and adds the runtime repair fields to four existing YOLO26 jobs.
 
 ## Gate and run the fleet
 
@@ -131,7 +131,7 @@ DATA_ROOT="${RESULT_ROOT%/revision}/assets/processed"
 ARCHIVE_ROOT="$RESULT_ROOT/archive"
 SPLIT="$RESULT_ROOT/protocol/split_manifest.json"
 BLOCKS="$RESULT_ROOT/protocol/index-blocks.json"
-JOBS="$RESULT_ROOT/analysis/manifests/jobs-4974b11959f16c9b4ea803bbebfc1db65d98d271112b385e09bd3eac49ac1c0b.json"
+JOBS="$RESULT_ROOT/analysis/manifests/jobs-060fe5bf858e95e210a513226059782f2e9be4ce90f3f4896a54c9632fbcf502.json"
 CACHE_DIR="$RESULT_ROOT/analysis/geometry-cache"
 REPORT_DIR="$RESULT_ROOT/analysis/final-report"
 
@@ -152,3 +152,7 @@ uv run --locked python -m src.revision.provenance_audit \
 ```
 
 The second-worker replay of `core-unet-DAAN-s0` loads the archived checkpoint into the resolved U-Net architecture with strict state-dictionary matching on CPU and runs one source-validation image. It then evaluates the archived raw predictions with the common evaluator on all three frozen target subsets. The reproducibility audit records exact-match status, content hashes, the runtime, and separate CPU evaluation times. The audit covers checkpoint load and frozen-prediction replay on a second host. The finalization marker `finalized.json` identifies checksummed reports tied to their input and implementation digests.
+
+### Matched hardware for adjacency comparisons
+
+Every adjacency job requires the GPU model and thread settings recorded by its matching core fit. For the four CPU-only YOLO evaluation repairs, the controller reads the preserved original training attempt. It waits for that core fit to succeed before dispatch. Cross-host assignment additionally requires the same `paired_environment_sha256` in the job and both host configurations. The verified 96-package inventory is `9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22`; the full host attestation is stored in `protocol/paired-environment-attestation.json` on the archive host. GPU driver versions remain recorded separately. Final paired-run checks compare actual precision, batch size, initialization, and runtime metadata. This policy was installed before any adjacency job started.
