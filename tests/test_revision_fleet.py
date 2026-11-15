@@ -259,3 +259,39 @@ def test_schedule_starts_approved_unet_but_blocks_running_rtdetr(tmp_path):
     assert launch.call_count == 1
     assert launch.call_args.args[2]["job_id"] == "uc"
     assert not (state / "rc.json").exists()
+
+
+def test_launch_sets_cpu_and_gpu_thread_environment(tmp_path, monkeypatch):
+    import shlex
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+
+    captured = []
+    def capture(host, command):
+        args = shlex.split(command)
+        script, script_args = args[2], args[3:]
+        def popen(*args, **kwargs):
+            captured.append(kwargs["env"])
+            return SimpleNamespace(pid=1)
+        with patch.object(sys, "argv", ["-c", *script_args]), patch.object(subprocess, "Popen", side_effect=popen):
+            exec(script, {})
+        return "1"
+
+    monkeypatch.setattr(fleet, "ssh", capture)
+    cfg = {"result_root": str(tmp_path), "code_path": str(tmp_path), "venv_python": "/p",
+           "data_path": "/d", "threads": 4, "cpu_threads": 12}
+    for index, device in enumerate([None, (0, "GPU-abc")]):
+        job = {"job_id": f"job{index}", "source": "DAAN"}
+        fleet.launch("host", cfg, job, fleet.prepare_launch("host", cfg, job, 1, device))
+    for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "RAYON_NUM_THREADS"):
+        assert captured[0][name] == "12"
+        assert captured[1][name] == "4"
+    assert captured[1]["CUDA_VISIBLE_DEVICES"] == "GPU-abc"
+    assert captured[0]["CUDA_VISIBLE_DEVICES"] == ""
+
+
+def test_subprocess_error_does_not_log_command():
+    import subprocess
+    assert fleet.concise_error(subprocess.TimeoutExpired("large secret script", 30)) == "command timed out after 30s"
+    assert fleet.concise_error(subprocess.CalledProcessError(255, "large secret script")) == "command exited with status 255"

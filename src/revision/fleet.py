@@ -71,6 +71,15 @@ def ssh(host, command, timeout=30):
     ).stdout
 
 
+def concise_error(exc):
+    """Avoid logging embedded remote scripts or other full subprocess arguments."""
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return f"command timed out after {exc.timeout}s"
+    if isinstance(exc, subprocess.CalledProcessError):
+        return f"command exited with status {exc.returncode}"
+    return f"{type(exc).__name__}: {str(exc)[:240]}"
+
+
 def quote_cmd(parts):
     return shlex.join([str(x) for x in parts])
 
@@ -419,7 +428,8 @@ print(p.pid)
                 json.dumps(resolved),
                 json.dumps(run),
                 record["gpu_uuid"] or "",
-                str(cfg.get("threads", 4)),
+                str(cfg.get("cpu_threads", cfg.get("threads", 4))
+                    if record["device"] is None else cfg.get("threads", 4)),
                 cfg.get("torch_home", root + "/torch-cache"),
             ]
         ),
@@ -548,7 +558,7 @@ def schedule(args):
                     ValueError,
                     json.JSONDecodeError,
                 ) as exc:
-                    print(f"{now()} {job['job_id']}: host/status unavailable: {exc}", flush=True)
+                    print(f"{now()} {job['job_id']}: host/status unavailable: {concise_error(exc)}", flush=True)
             records[job["job_id"]] = record
         if args.approval.is_file():
             gate = json.loads(args.approval.read_text())
@@ -580,7 +590,7 @@ def schedule(args):
                 try:
                     free = gpu_queries[host].result()
                 except (subprocess.SubprocessError, OSError, ValueError) as exc:
-                    print(f"{now()} {host}: GPU check failed: {exc}", flush=True)
+                    print(f"{now()} {host}: GPU check failed: {concise_error(exc)}", flush=True)
                     free = []
                 slots = [(host, i) for i in free if (host, i[0]) not in used]
                 slots += [(host, None)] * max(
@@ -639,7 +649,7 @@ def schedule(args):
                         launch(host, cfg, job, record)
                         record.update(state="launching")
                     except (subprocess.SubprocessError, OSError, ValueError) as exc:
-                        record.update(state="uncertain", error=f"launch outcome unknown: {exc}")
+                        record.update(state="uncertain", error=f"launch outcome unknown: {concise_error(exc)}")
                     atomic_json(path, record)
                     records[job["job_id"]] = record
                     used.add((host, record["device"]))
