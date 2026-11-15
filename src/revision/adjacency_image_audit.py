@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+from typing import TypedDict
 
 import cv2
 import numpy as np
@@ -23,6 +24,17 @@ METHOD = {
     "thresholds": [0, 4, 8],
     "scope": "Image-similarity candidates do not certify duplicate frames, vessel identities, tracks, or temporal independence.",
 }
+
+
+class FrameMatch(TypedDict):
+    test_image_id: int
+    test_frame: int
+    nearest_train_image_id: int
+    nearest_train_frame: int
+    hamming_distance: int
+    nearest_hash_frame_index_distance: int
+    minimum_frame_index_distance: int
+    exact_sha256_train_image_ids: list[int]
 
 
 def perceptual_hash(gray: np.ndarray) -> int:
@@ -45,7 +57,7 @@ def compare_partition(records: dict, hashes: dict, train_ids: list, test_ids: li
     if not train_ids or not test_ids or set(train_ids) & set(test_ids):
         raise ValueError("Training and test IDs must be nonempty and disjoint")
     train_ids = sorted(train_ids)
-    rows = []
+    rows: list[FrameMatch] = []
     for test_id in test_ids:
         test = records[test_id]
         closest = min(train_ids, key=lambda i: ((hashes[i] ^ hashes[test_id]).bit_count(), i))
