@@ -586,11 +586,13 @@ def run(job):
         if not torch.isfinite(loss):
             raise RuntimeError(f"Nonfinite training loss at update {update}")
         loss.backward()
-        if any(
-            parameter.grad is not None and not torch.isfinite(parameter.grad).all()
+        grad_checks = [
+            torch.isfinite(parameter.grad).all()
             for parameter in model.parameters()
-        ):
-            raise RuntimeError(f"Nonfinite gradient at update {update}")
+            if parameter.grad is not None
+        ]
+        if not grad_checks or not torch.stack(grad_checks).all():
+            raise RuntimeError(f"Missing or nonfinite gradient at update {update}")
         optimizer.step()
         actual_calls += 1
         interval_loss_sum += float(loss.item())
