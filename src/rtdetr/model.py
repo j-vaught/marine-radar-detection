@@ -54,6 +54,7 @@ def train_rt_detr(
         optimizer=train_cfg["optimizer"],
         lr0=train_cfg["lr"],
         warmup_epochs=train_cfg["warmup_epochs"],
+        cos_lr=train_cfg.get("lr_scheduler", "").lower() in ("cosineannealinglr", "cosine"),
         weight_decay=train_cfg.get("weight_decay", 0.0),
         device=device,
         workers=train_cfg["workers"],

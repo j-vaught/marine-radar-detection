@@ -153,7 +153,7 @@ def tune_thresholds(raw_preds: list[dict], gt_json_path: Path, out_dir: Path, cf
 
     for threshold in thresholds:
         filtered = [pred for pred in raw_preds if float(pred["score"]) >= threshold]
-        pred_path = out_dir / f"val_thr{threshold:.2f}.json"
+        pred_path = out_dir / f"val_thr{threshold:.8g}.json"
         pred_path.write_text(json.dumps(filtered))
         metrics = eval_predictions(gt_json_path, pred_path, verbose=False)
         if best_metrics is None or (metrics["ap50"], metrics["ap"]) > (best_metrics["ap50"], best_metrics["ap"]):
