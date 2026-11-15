@@ -200,23 +200,23 @@ def run_job(job: dict) -> dict:
     )
     # The Ultralytics default (0.1) is 1000x this RT-DETR learning rate and
     # destabilizes transformer classification during warmup. Start all groups at zero.
-    if method == 'rtdetr':
-        args['warmup_bias_lr'] = float(t.get('warmup_bias_lr', 0.0))
+    if method == "rtdetr":
+        args["warmup_bias_lr"] = float(t.get("warmup_bias_lr", 0.0))
     amp_probe_hash = None
-    if is_cuda and args['amp']:
+    if is_cuda and args["amp"]:
         # Ultralytics 8.4.14 checks AMP using this auxiliary model in the cwd.
         # Stage it per attempt so the framework never races to download it.
-        weights_dir = job.get('weights_dir') or job.get('weights_cache')
+        weights_dir = job.get("weights_dir") or job.get("weights_cache")
         if not weights_dir:
-            raise ValueError('AMP requires a staged weights_dir or weights_cache')
-        probe = Path(weights_dir) / 'yolo26n.pt'
+            raise ValueError("AMP requires a staged weights_dir or weights_cache")
+        probe = Path(weights_dir) / "yolo26n.pt"
         if not probe.is_file():
-            raise FileNotFoundError(f'AMP probe checkpoint missing: {probe}')
+            raise FileNotFoundError(f"AMP probe checkpoint missing: {probe}")
         destination = Path.cwd() / probe.name
         amp_probe_hash = protocol.sha256_file(probe)
         if destination.exists():
             if protocol.sha256_file(destination) != amp_probe_hash:
-                raise ValueError(f'AMP probe differs from staged weights: {destination}')
+                raise ValueError(f"AMP probe differs from staged weights: {destination}")
         else:
             shutil.copy2(probe, destination)
     state = {}

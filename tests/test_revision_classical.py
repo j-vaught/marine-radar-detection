@@ -56,6 +56,7 @@ def test_selection_uses_train_then_validation_and_freezes_tests(tmp_path, monkey
 def test_cfar_cpu_integral_box_sum_matches_pool():
     import torch
     import torch.nn.functional as F
+
     from src.cfar.gpu.os_cfar import _box_sum
 
     torch.set_num_threads(2)
@@ -71,7 +72,9 @@ def test_cfar_group_predictions_match_serial(monkeypatch):
     import torch
 
     protocol = types.ModuleType("src.revision.protocol")
-    protocol.prepare_job = protocol.save_json = protocol.set_seed = protocol.sha256_file = lambda *a: None
+    protocol.prepare_job = protocol.save_json = protocol.set_seed = protocol.sha256_file = (
+        lambda *a: None
+    )
     evaluation = types.ModuleType("src.revision.evaluation")
     evaluation.evaluate_coco = lambda *a: None
     legacy = types.ModuleType("src.cfar.gpu.eval_coco")
@@ -85,12 +88,20 @@ def test_cfar_group_predictions_match_serial(monkeypatch):
     from src.cfar.gpu.data import Corpus
 
     torch.set_num_threads(2)
-    images = torch.randint(0, 256, (2, 1, 16, 16), generator=torch.Generator().manual_seed(5)).float() / 255
-    corpus = Corpus(images, torch.ones(1, 1, 16, 16), np.array([1, 2]), ["a", "b"], np.array([0, 0]), "", {})
+    images = (
+        torch.randint(0, 256, (2, 1, 16, 16), generator=torch.Generator().manual_seed(5)).float()
+        / 255
+    )
+    corpus = Corpus(
+        images, torch.ones(1, 1, 16, 16), np.array([1, 2]), ["a", "b"], np.array([0, 0]), "", {}
+    )
     for method in ("CA", "OS"):
-        configs = [dict(method=method, guard=1, ref=2, pfa=p, min_area=a, os_k=k)
-                   for p in (.01, .001) for a in (1, 3)
-                   for k in ([None] if method == "CA" else [.5, .75])]
+        configs = [
+            {"method": method, "guard": 1, "ref": 2, "pfa": p, "min_area": a, "os_k": k}
+            for p in (0.01, 0.001)
+            for a in (1, 3)
+            for k in ([None] if method == "CA" else [0.5, 0.75])
+        ]
         caches = {"fixture": (corpus, BackgroundCache(corpus))}
         grouped = runner._cfar_group_predictions(configs, "fixture", "", "cpu", caches)
         for config in configs:

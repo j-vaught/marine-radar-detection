@@ -126,8 +126,9 @@ def _cfar_predictions(method, config, ann_path, image_dir, device, caches):
 def _cfar_group_predictions(configs, ann_path, image_dir, device, caches):
     """Compute all requested thresholds for one window in one pass."""
     import numpy as np
-    from src.cfar.gpu.data import load_corpus
+
     from src.cfar.experiments.grid import BackgroundCache, predict_subset
+    from src.cfar.gpu.data import load_corpus
 
     if ann_path not in caches:
         corpus = load_corpus(str(ann_path), str(image_dir), device=device)
@@ -136,9 +137,22 @@ def _cfar_group_predictions(configs, ann_path, image_dir, device, caches):
     first = configs[0]
     pfas = list(dict.fromkeys(c["pfa"] for c in configs))
     areas = list(dict.fromkeys(c["min_area"] for c in configs))
-    ks = list(dict.fromkeys(c["os_k"] for c in configs)) if first["method"] == "OS" else [0.5, 0.75, 0.9]
-    return predict_subset(corpus, cache, np.arange(corpus.N), first["method"],
-                          first["guard"], first["ref"], pfas=pfas, min_areas=areas, os_ks=ks)
+    ks = (
+        list(dict.fromkeys(c["os_k"] for c in configs))
+        if first["method"] == "OS"
+        else [0.5, 0.75, 0.9]
+    )
+    return predict_subset(
+        corpus,
+        cache,
+        np.arange(corpus.N),
+        first["method"],
+        first["guard"],
+        first["ref"],
+        pfas=pfas,
+        min_areas=areas,
+        os_ks=ks,
+    )
 
 
 def _cfar_key(config):
@@ -239,7 +253,9 @@ def run_job(job: dict) -> dict:
             window = (cfg["method"], cfg["guard"], cfg["ref"])
             if window != group_window:
                 grouped = [c for c in grid if (c["method"], c["guard"], c["ref"]) == window]
-                group_predictions = _cfar_group_predictions(grouped, paths["train"], data["image_dir"], device, cfar_caches)
+                group_predictions = _cfar_group_predictions(
+                    grouped, paths["train"], data["image_dir"], device, cfar_caches
+                )
                 group_window = window
             pred = group_predictions[_cfar_key(cfg)].to_coco()
             save_json(out / f"candidate_{i:04d}_train_predictions.json", pred)

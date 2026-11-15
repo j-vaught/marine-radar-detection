@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
 import datetime as dt
 import fcntl
 import hashlib
@@ -18,6 +17,7 @@ import sys
 import time
 import traceback
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 GPU_METHODS = {"faster_rcnn", "unet", "yolo", "rtdetr"}
@@ -40,16 +40,35 @@ def ssh_options(host):
     directory = Path(f"/tmp/revision-ssh-{os.getuid()}")
     directory.mkdir(mode=0o700, exist_ok=True)
     info = directory.lstat()
-    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != os.getuid()
+        or stat.S_IMODE(info.st_mode) != 0o700
+    ):
         raise OSError(f"Unsafe SSH control directory: {directory}")
     socket = directory / hashlib.sha256(host.encode()).hexdigest()[:20]
-    return ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ControlMaster=auto",
-            "-o", "ControlPersist=120", "-o", f"ControlPath={socket}"]
+    return [
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=8",
+        "-o",
+        "ControlMaster=auto",
+        "-o",
+        "ControlPersist=120",
+        "-o",
+        f"ControlPath={socket}",
+    ]
 
 
 def ssh(host, command, timeout=30):
-    return subprocess.run(["ssh", *ssh_options(host), host, command],
-                          capture_output=True, text=True, timeout=timeout, check=True).stdout
+    return subprocess.run(
+        ["ssh", *ssh_options(host), host, command],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=True,
+    ).stdout
 
 
 def quote_cmd(parts):
@@ -60,7 +79,11 @@ def gpu_free(host, config):
     """GPU must have no compute process, irrespective of process ownership."""
     prefix = [config["wrapper"]] if config.get("wrapper") else []
     inventory = prefix + ["nvidia-smi", "--query-gpu=index,uuid", "--format=csv,noheader,nounits"]
-    processes = prefix + ["nvidia-smi", "--query-compute-apps=gpu_uuid,pid", "--format=csv,noheader,nounits"]
+    processes = prefix + [
+        "nvidia-smi",
+        "--query-compute-apps=gpu_uuid,pid",
+        "--format=csv,noheader,nounits",
+    ]
     marker = "__REVISION_PROCESS_LIST__"
     command = quote_cmd(inventory) + " && printf '\n" + marker + "\n' && " + quote_cmd(processes)
     output = ssh(host, command)
@@ -373,8 +396,10 @@ def schedule(args):
                 if record["state"] in {"running", "launching", "uncertain"}:
                     pending_status[job["job_id"]] = record
         with ThreadPoolExecutor(max_workers=min(16, max(1, len(pending_status)))) as executor:
-            futures = {job_id: executor.submit(remote_status, record["host"], record)
-                       for job_id, record in pending_status.items()}
+            futures = {
+                job_id: executor.submit(remote_status, record["host"], record)
+                for job_id, record in pending_status.items()
+            }
         for job in jobs:
             path = state_dir / (job["job_id"] + ".json")
             if not path.exists():
@@ -437,12 +462,24 @@ def schedule(args):
         else:
             gate = {}
         if not args.status:
-            used = {(r.get("host"), r.get("device")) for r in records.values() if r["state"] in {"running", "uncertain", "launching"}}
-            eligible = {host: cfg for host, cfg in hosts.items()
-                        if cfg.get("data_verified") and cfg.get("code_path") and cfg.get("protocol_sha256")
-                        and cfg.get("code_commit") and cfg.get("enabled", True)}
+            used = {
+                (r.get("host"), r.get("device"))
+                for r in records.values()
+                if r["state"] in {"running", "uncertain", "launching"}
+            }
+            eligible = {
+                host: cfg
+                for host, cfg in hosts.items()
+                if cfg.get("data_verified")
+                and cfg.get("code_path")
+                and cfg.get("protocol_sha256")
+                and cfg.get("code_commit")
+                and cfg.get("enabled", True)
+            }
             with ThreadPoolExecutor(max_workers=min(16, max(1, len(eligible)))) as executor:
-                gpu_queries = {host: executor.submit(gpu_free, host, cfg) for host, cfg in eligible.items()}
+                gpu_queries = {
+                    host: executor.submit(gpu_free, host, cfg) for host, cfg in eligible.items()
+                }
             for host, cfg in eligible.items():
                 try:
                     free = gpu_queries[host].result()
@@ -543,7 +580,11 @@ def main():
     c = sub.add_parser("collect", help="Collect finished attempts independently of scheduling")
     c.add_argument("--state", type=Path, required=True)
     c.add_argument("--dest", type=Path, required=True)
-    c.add_argument("--metadata-only", action="store_true", help="Collect JSON, CSV and logs without model weights or image data")
+    c.add_argument(
+        "--metadata-only",
+        action="store_true",
+        help="Collect JSON, CSV and logs without model weights or image data",
+    )
     args = p.parse_args()
     if args.mode == "worker":
         sys.exit(worker(args.job, args.completion, args.attempt))
@@ -556,9 +597,17 @@ def main():
             dest.mkdir(parents=True, exist_ok=True)
             rsync = ["rsync", "-a", "-e", quote_cmd(["ssh", *ssh_options(record["host"])])]
             if args.metadata_only:
-                rsync += ["--include=*/", "--include=*.json", "--include=*.csv",
-                          "--include=*.log", "--include=command.txt", "--exclude=*"]
-            subprocess.run([*rsync, f"{record['host']}:{record['out']}/", str(dest) + "/"], check=True)
+                rsync += [
+                    "--include=*/",
+                    "--include=*.json",
+                    "--include=*.csv",
+                    "--include=*.log",
+                    "--include=command.txt",
+                    "--exclude=*",
+                ]
+            subprocess.run(
+                [*rsync, f"{record['host']}:{record['out']}/", str(dest) + "/"], check=True
+            )
         return
     schedule(args)
 
