@@ -1,8 +1,10 @@
 """Reproducible source-site Ultralytics training and cross-site evaluation."""
 from __future__ import annotations
 
-import csv
 import json
+import os
+import random
+import shutil
 import time
 from pathlib import Path
 
@@ -101,6 +103,8 @@ def run_job(job: dict) -> dict:
             cfg[section] = values
     train, val = prepared['train'], prepared['validation']
     data_root = out / 'data'
+    validation_gt_path = out / 'validation_gt.json'
+    protocol.save_json(validation_gt_path, val)
     train_dir = stage_split(train, Path(prepared['image_dir']), data_root / 'train')
     val_dir = stage_split(val, Path(prepared['image_dir']), data_root / 'val')
     categories = sorted(train['categories'], key=lambda c: c['id'])
@@ -111,6 +115,28 @@ def run_job(job: dict) -> dict:
         'val': str(val_dir), 'names': {i: c['name'] for i, c in enumerate(categories)}}))
     protocol.set_seed(int(job['seed']))
     spec = _model_spec(method, job['initialization'], cfg)
+    if job['initialization'] == 'pretrained':
+        weights_dir = job.get('weights_dir') or job.get('weights_cache')
+        if not weights_dir:
+            raise ValueError('pretrained initialization requires a staged weights_dir or weights_cache')
+        spec = str(Path(weights_dir) / Path(spec).name)
+        if not Path(spec).is_file():
+            raise FileNotFoundError(f'pre-staged checkpoint missing: {spec}')
+    requested_device = str(job['device'])
+    is_cuda = requested_device.startswith('cuda') or requested_device.isdigit()
+    if is_cuda:
+        if torch.cuda.device_count() != 1:
+            raise RuntimeError('GPU worker must see exactly one GPU')
+        gpu_uuid = os.environ.get('CUDA_VISIBLE_DEVICES', '')
+        if not gpu_uuid.startswith('GPU-') or ',' in gpu_uuid:
+            raise RuntimeError('GPU worker must be pinned with CUDA_VISIBLE_DEVICES to one GPU UUID')
+        actual_uuid = 'GPU-' + str(torch.cuda.get_device_properties(0).uuid)
+        if actual_uuid.lower() != gpu_uuid.lower():
+            raise RuntimeError(f'visible device UUID {actual_uuid} differs from assigned {gpu_uuid}')
+        device = ''
+    else:
+        gpu_uuid = None
+        device = requested_device
     cls = YOLO if method == 'yolo' else RTDETR
     model = cls(spec)
     initial_path = getattr(model, 'ckpt_path', None)
@@ -126,12 +152,43 @@ def run_job(job: dict) -> dict:
                 batch=int(t['batch_size']), imgsz=int(t['imgsz']), optimizer=t['optimizer'],
                 lr0=float(t.get('lr0', t.get('lr', 0.001))), lrf=float(t.get('lrf', 0.01)),
                 warmup_epochs=float(t['warmup_epochs']), weight_decay=float(t.get('weight_decay', 0.0005)),
-                device=str(job['device']), workers=int(t['workers']), amp=bool(t.get('amp', True)),
-                cache=t.get('cache', False), seed=int(job['seed']), deterministic=True,
+                device=device, workers=int(t['workers']), amp=bool(t.get('amp', True)),
+                cache=t.get('cache', False), seed=int(job['seed']), deterministic=(method != 'rtdetr'),
                 project=str(out), name='fit', exist_ok=True, pretrained=job['initialization'] == 'pretrained',
                 save=True, cos_lr=t.get('lr_scheduler', '').lower() in ('cosineannealinglr', 'cosine'),
                 **aug)
-    if torch.cuda.is_available():
+    state = {}
+    def capture_initial(trainer):
+        # This callback runs after Ultralytics rebuilds and initializes its train model.
+        if is_cuda:
+            trainer.validator.args.device = ''
+            trainer.args.device = ''
+        initial_state = out / 'initial_state.pt'
+        torch.save({'model': trainer.model.state_dict(), 'architecture': trainer.model.yaml}, initial_state)
+        state['initial_state_sha256'] = protocol.sha256_file(initial_state)
+        state['architecture'] = trainer.model.yaml
+    def capture_checkpoint(trainer):
+        # on_model_save fires after save_model and before final_eval strips optimizer state.
+        resume_dir = out / 'resume'
+        resume_dir.mkdir(exist_ok=True)
+        rng = {'python': random.getstate(), 'numpy': np.random.get_state(),
+               'torch': torch.get_rng_state(),
+               'cuda': torch.cuda.get_rng_state_all() if is_cuda else []}
+        training_state = {'epoch': trainer.epoch, 'model': trainer.model.state_dict(),
+                          'optimizer': trainer.optimizer.state_dict(), 'scaler': trainer.scaler.state_dict(),
+                          'scheduler': trainer.scheduler.state_dict(), 'rng': rng}
+        torch.save(training_state, resume_dir / 'last_training_state.pt')
+        shutil.copy2(trainer.last, resume_dir / 'last.pt')
+        torch.save(rng, resume_dir / 'last_rng.pt')
+        if trainer.fitness == trainer.best_fitness:
+            torch.save(training_state, resume_dir / 'best_training_state.pt')
+            shutil.copy2(trainer.best, resume_dir / 'best.pt')
+            torch.save(rng, resume_dir / 'best_rng.pt')
+            state['best_epoch'] = int(trainer.epoch)
+            state['best_fitness'] = float(trainer.fitness)
+    model.add_callback('on_pretrain_routine_end', capture_initial)
+    model.add_callback('on_model_save', capture_checkpoint)
+    if is_cuda:
         torch.cuda.reset_peak_memory_stats()
     started = time.perf_counter()
     model.train(**args)
@@ -140,21 +197,16 @@ def run_job(job: dict) -> dict:
     best, last = save_dir / 'weights' / 'best.pt', save_dir / 'weights' / 'last.pt'
     if not best.is_file() or not last.is_file():
         raise FileNotFoundError('training did not produce both best.pt and last.pt')
-    checkpoint = torch.load(best, map_location='cpu', weights_only=False)
-    best_epoch = checkpoint.get('epoch')
-    # Ultralytics strips optimizer metadata in some versions. Preserve the epoch from the
-    # validation fitness in the complete training CSV when checkpoint epoch is unavailable.
-    if best_epoch is None or best_epoch < 0:
-        with (save_dir / 'results.csv').open(newline='') as stream:
-            rows = list(csv.DictReader(stream, skipinitialspace=True))
-        best_epoch = max(rows, key=lambda r: 0.1 * float(r.get('metrics/mAP50(B)', 0)) + 0.9 * float(r.get('metrics/mAP50-95(B)', 0)))['epoch'] if rows else None
+    if 'best_epoch' not in state or 'initial_state_sha256' not in state:
+        raise RuntimeError('required training callbacks did not capture initialization and best checkpoint')
+    best_epoch = state['best_epoch']
     selected = cls(str(best))
     post = cfg['postprocessing']
     floor = float(post['score_floor'])
     thresholds = sorted(set(map(float, post.get('score_threshold_grid', [post['score_threshold']]))))
     if not thresholds or min(thresholds) < floor:
         raise ValueError('threshold grid must be nonempty and at or above score floor')
-    val_raw = _predict(selected, val_dir, val, floor=floor, device=str(job['device']), imgsz=int(t['imgsz']))
+    val_raw = _predict(selected, val_dir, val, floor=floor, device=device, imgsz=int(t['imgsz']))
     protocol.save_json(out / 'validation_raw.json', val_raw)
     sweep = []
     for threshold in thresholds:
@@ -170,14 +222,17 @@ def run_job(job: dict) -> dict:
         coco = prepared['tests'][target]
         if sorted(c['id'] for c in coco['categories']) != [c['id'] for c in categories]:
             raise ValueError('test categories differ from training categories')
+        gt_path = out / f'{target}_gt.json'
+        protocol.save_json(gt_path, coco)
         target_dir = stage_split(coco, Path(prepared['image_dir']), data_root / 'test' / target)
         tick = time.perf_counter()
-        raw = _predict(selected, target_dir, coco, floor=floor, device=str(job['device']), imgsz=int(t['imgsz']))
+        raw = _predict(selected, target_dir, coco, floor=floor, device=device, imgsz=int(t['imgsz']))
         elapsed = time.perf_counter() - tick
         filtered = [p for p in raw if p['score'] >= choice['threshold']]
         protocol.save_json(out / f'{target}_raw.json', raw)
         protocol.save_json(out / f'{target}_operating.json', filtered)
-        results[target] = {'raw_metrics': evaluation.evaluate_coco(coco, raw),
+        results[target] = {'ground_truth_path': str(gt_path), 'ground_truth_sha256': protocol.sha256_file(gt_path),
+                           'checkpoint_sha256': protocol.sha256_file(best), 'raw_metrics': evaluation.evaluate_coco(coco, raw),
                            'operating_metrics': evaluation.evaluate_coco(coco, filtered),
                            'inference_seconds': elapsed, 'images': len(coco['images']),
                            'raw_path': str(out / f'{target}_raw.json'), 'operating_path': str(out / f'{target}_operating.json'),
@@ -185,10 +240,21 @@ def run_job(job: dict) -> dict:
                            'scores': [p['score'] for p in raw]}
     resolved = vars(model.trainer.args) if hasattr(model.trainer.args, '__dict__') else dict(model.trainer.args)
     result = {'job_id': job['job_id'], 'method': method, 'source': job['source'], 'seed': job['seed'],
+              'condition': job.get('condition'), 'stage': job.get('stage'), 'expected_tests': job.get('eval_targets', []),
+              'manifest_sha256': protocol.sha256_file(Path(job['manifest'])),
+              'annotation_sha256': protocol.sha256_file(Path(job['ann'])),
+              'validation_gt_path': str(validation_gt_path), 'validation_gt_sha256': protocol.sha256_file(validation_gt_path),
               'initialization': job['initialization'], 'initial_model': spec, 'initial_sha256': initial_hash,
+              'initial_state_path': str(out / 'initial_state.pt'), 'initial_state_sha256': state['initial_state_sha256'],
+              'architecture': state['architecture'], 'gpu_uuid': gpu_uuid,
+              'determinism_note': 'RT-DETR CUDA grid_sample backward is nondeterministic' if method == 'rtdetr' else 'deterministic algorithms requested',
+              'resume_best_path': str(out / 'resume' / 'best.pt'), 'resume_last_path': str(out / 'resume' / 'last.pt'),
+              'resume_best_training_state': str(out / 'resume' / 'best_training_state.pt'),
+              'resume_last_training_state': str(out / 'resume' / 'last_training_state.pt'),
+              'best_fitness': state['best_fitness'],
               'best_checkpoint': str(best), 'best_sha256': protocol.sha256_file(best),
               'last_checkpoint': str(last), 'last_sha256': protocol.sha256_file(last), 'best_epoch': best_epoch,
-              'training_seconds': training_seconds, 'peak_vram_bytes': torch.cuda.max_memory_allocated() if torch.cuda.is_available() else None,
+              'training_seconds': training_seconds, 'peak_vram_bytes': torch.cuda.max_memory_allocated() if is_cuda else None,
               'ultralytics_version': ultralytics.__version__, 'job': {k: str(v) if isinstance(v, Path) else v for k, v in job.items()},
               'config': cfg, 'train_args': args,
               'resolved_train_args': resolved, 'validation_sweep': sweep, 'selected_threshold': choice['threshold'],
