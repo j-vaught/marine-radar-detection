@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import os
+import re
 import time
 from collections import Counter
 from pathlib import Path
@@ -86,11 +87,25 @@ def _read(path):
     return json.loads(Path(path).read_text())
 
 
-def validate_parent(parent: Path, ann: Path, manifest_path: Path, images: Path):
+def _source_metrics(path: Path):
+    """Decode only receipt-bound identity, selection, and subset metadata fields."""
+    text = path.read_text()
+    result = {}
+    for key in ("job_id", "method", "annotation_sha256", "selected_config", "paths"):
+        match = re.search(r"^  " + re.escape(json.dumps(key)) + r":\s*", text, re.MULTILINE)
+        if match is None:
+            raise ValueError(f"Missing parent metrics field: {key}")
+        result[key] = json.JSONDecoder().raw_decode(text, match.end())[0]
+    return result
+
+
+def validate_parent(parent: Path, ann: Path, manifest_path: Path, images: Path, source_only=False):
     completion = _read(parent / "completion.json")
     receipt = _read(parent / "receipt.json")
     job = _read(parent / "job.json")
-    metrics = _read(parent / "metrics.json")
+    metrics = (
+        _source_metrics(parent / "metrics.json") if source_only else _read(parent / "metrics.json")
+    )
     for key in ("job_id", "attempt", "nonce", "pid", "start_ticks", "boot_id"):
         if completion.get(key) is None or completion[key] != receipt.get(key):
             raise ValueError(f"Parent receipt mismatch: {key}")
@@ -123,14 +138,14 @@ def validate_parent(parent: Path, ann: Path, manifest_path: Path, images: Path):
     if (
         len(manifest["sites"]) != 3
         or set(job.get("eval_targets", [])) != set(manifest["sites"])
-        or set(metrics["tests"]) != set(manifest["sites"])
+        or (not source_only and set(metrics["tests"]) != set(manifest["sites"]))
     ):
         raise ValueError("Parent must use all three frozen holdouts")
     source = job["source"]
     selection = metrics["selected_config"]
     if selection.get("source") != source or _read(parent / "selected_config.json") != selection:
         raise ValueError("Selected configuration mismatch")
-    data = _read(ann)
+    data = None if source_only else _read(ann)
     names = {
         "validation": (source, "validation"),
         **{f"test_{s}": (s, "test") for s in manifest["sites"]},
@@ -147,11 +162,13 @@ def validate_parent(parent: Path, ann: Path, manifest_path: Path, images: Path):
         if seen_ids.intersection(ids):
             raise ValueError("Validation and holdouts must be disjoint")
         seen_ids.update(ids)
-        subset = _subset(data, ids)
+        if source_only and name != "validation":
+            continue
+        path = parent / f"{name}_annotations.json"
+        subset = _read(path) if source_only else _subset(data, ids)
         if {im["id"] for im in subset["images"]} != set(ids):
             raise ValueError(f"Missing images in {name}")
-        path = parent / f"{name}_annotations.json"
-        if _read(path) != subset or metrics["paths"]["subsets"][name][
+        if (not source_only and _read(path) != subset) or metrics["paths"]["subsets"][name][
             "annotations_sha256"
         ] != sha256_file(path):
             raise ValueError(f"Parent subset differs from frozen COCO: {name}")
@@ -175,6 +192,7 @@ def run(
     binary: Path,
     out: Path,
     threads: int,
+    selection_barrier: Path | None = None,
 ):
     if threads < 1 or not binary.is_file():
         raise ValueError("A native binary and positive thread count are required")
@@ -183,7 +201,9 @@ def run(
     )
     if out.exists():
         raise FileExistsError(f"Output already exists: {out}")
-    job, metrics, manifest, subsets = validate_parent(parent, ann, manifest_path, images)
+    job, metrics, manifest, subsets = validate_parent(
+        parent, ann, manifest_path, images, source_only=True
+    )
     out.mkdir(parents=True)
     os.environ["RAYON_NUM_THREADS"] = str(threads)
     os.environ["OMP_NUM_THREADS"] = str(threads)
@@ -231,6 +251,14 @@ def run(
         },
     )
     selection_hash = sha256_file(out / "selection.json")
+    if selection_barrier is not None:
+        print(f"Selection frozen; waiting for barrier {selection_barrier}", flush=True)
+        while not selection_barrier.is_file():
+            time.sleep(1)
+    # Only now decode full COCO and target metrics and inspect held-out data.
+    job, metrics, manifest, subsets = validate_parent(parent, ann, manifest_path, images)
+    if metrics["selected_config"]["config"] != config:
+        raise ValueError("Parent configuration changed during selection")
     max_area = max(im["width"] * im["height"] for im in subsets["validation"]["images"])
     diagnostics = {}
     for label, cfg in (("parent", config), ("selected", selected["config"])):
@@ -296,8 +324,18 @@ def main():
     for name in ("parent", "ann", "images", "manifest", "binary", "out"):
         parser.add_argument("--" + name, required=True, type=Path)
     parser.add_argument("--threads", type=int, required=True)
+    parser.add_argument("--selection-barrier", type=Path)
     args = parser.parse_args()
-    run(args.parent, args.ann, args.images, args.manifest, args.binary, args.out, args.threads)
+    run(
+        args.parent,
+        args.ann,
+        args.images,
+        args.manifest,
+        args.binary,
+        args.out,
+        args.threads,
+        args.selection_barrier,
+    )
 
 
 if __name__ == "__main__":

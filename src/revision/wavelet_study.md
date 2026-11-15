@@ -33,3 +33,9 @@ pixel count. They report proposal count, best-IoU recall, and score ties. The
 native detector quantizes component scores and normalizes them per image; this
 study does not implement a continuous-score ablation. Total elapsed time and
 per-candidate, component, and holdout execution times are recorded.
+
+When coordinating multiple studies, pass `--selection-barrier /path/to/ready`
+to make each process wait after writing its selection. Create the barrier file
+only after all source selections have been recorded. Full COCO and held-out
+metrics are decoded after the barrier. The initial hash checks scan their input
+files as bytes, while selection uses only receipt-bound source validation data.

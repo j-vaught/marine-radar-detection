@@ -170,7 +170,16 @@ def test_run_freezes_validation_selection_before_holdout_and_checks_parent(tmp_p
     def evaluate(gt, preds):
         return {"ap": 1.0, "ap50": 1.0, "predictions": len(preds)}
 
+    original_read = study._read
+
+    def checked_read(path):
+        path = Path(path)
+        if path == ann or path.name.startswith("test_") or path.name == "metrics.json":
+            assert (out / "selection.json").is_file()
+        return original_read(path)
+
     with (
+        mock.patch.object(study, "_read", checked_read),
         mock.patch.object(study, "_native_predictions", predict),
         mock.patch.object(study, "evaluate_coco", evaluate),
     ):
