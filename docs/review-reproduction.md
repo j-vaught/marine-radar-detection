@@ -4,15 +4,17 @@ The revision evaluates each source-trained detector on the same fixed destinatio
 
 ## Release and environment
 
-The initial worker release is `3ed180804db2a3dd24420b51099ee0771ef2db43`. The active worker release, including corrected YOLO26 evaluation, is `f0bd687afdac8f2c8ce7fab5cb8f44f12c148b21`. Preserve the recorded commit of each archived attempt. Use analysis commit `8595d4c56706fb57944f4b2ad10fc2a360e358e1` to replay the repair-aware matrix and paired block analysis. For worker staging, set `RELEASE_SHA` to the applicable worker commit and `RESULT_ROOT` to the permanent run directory on that worker. Set `DATA_ROOT` to the processed release containing `annotations/all.json` and `images/`. Keep the processed inputs read-only and compare their hashes with the frozen manifest when staging each worker.
+The initial worker release is `3ed180804db2a3dd24420b51099ee0771ef2db43`. The active worker release, including corrected YOLO26 evaluation, is `f0bd687afdac8f2c8ce7fab5cb8f44f12c148b21`. Preserve the recorded commit of each archived attempt. The current results use analysis source commit `067ed4d16a990cda8aa8c08f3e7fd93b35dbd59d` for the repair-aware matrix and paired block analysis. Later documentation-only commits do not require reanalysis. For worker staging, set `RELEASE_SHA` to the applicable worker commit and `RESULT_ROOT` to the permanent run directory on that worker. Set `DATA_ROOT` to the processed release containing `annotations/all.json` and `images/`. Keep the processed inputs read-only and compare their hashes with the frozen manifest when staging each worker.
 
 Create an empty release directory on each worker and extract the committed tree there. Run the locked install from that directory. [Revision environment](revision-environment.md). Use Python 3.11 and a compatible NVIDIA driver for the CUDA pilot. The Linux x86-64 lock uses the CUDA 12.1 builds of PyTorch 2.5.1 and torchvision 0.20.1, alongside Ultralytics 8.4.14 and pycocotools 2.0.11. Keep the lock, interpreter version, and installed package versions with the worker evidence.
 
 ```sh
+mkdir -p "$WORKER_RELEASE"
 git archive "$RELEASE_SHA" | tar -x -C "$WORKER_RELEASE"
+export UV_PROJECT_ENVIRONMENT="$WORKER_VENV"
 (
   cd "$WORKER_RELEASE"
-  UV_PROJECT_ENVIRONMENT="$WORKER_VENV" uv sync --locked
+  uv sync --locked --python 3.11
 )
 ```
 
@@ -56,7 +58,7 @@ The split sorts each site by its numeric frame index. At the floor-rounded 15%, 
 
 The checked-in manifest defines 110 jobs for a fresh run, comprising 17 source-only diagnostics and 93 benchmark jobs. Four learned models use five seeds across three sources for 60 core fits. Five deterministic classical methods use one source parameter selection per site for 15 core jobs. Faster R-CNN and YOLO26 each run the adjacency arm on three sources with seeds 0–2 for another 18 learned jobs. The 93 benchmark jobs produce 279 destination evaluations. The diagnostic jobs have empty `eval_targets`. They comprise 12 learned smoke fits with a 32-frame source training subset and five classical checks with diagnostic candidates. Earlier smoke attempts and the three [Wavelet extension studies](../src/revision/wavelet_study.md) are tracked separately from the matrix.
 
-For replay of the archived revision, use the resolved job file saved under `analysis/manifests/jobs-060fe5bf858e95e210a513226059782f2e9be4ce90f3f4896a54c9632fbcf502.json` on COMECH 2080. Its SHA-256 is `060fe5bf858e95e210a513226059782f2e9be4ce90f3f4896a54c9632fbcf502`. It retains the 110 job IDs and adds the runtime repair fields to four existing YOLO26 jobs.
+For replay of the archived revision, use the resolved job file at `analysis/manifests/jobs-060fe5bf858e95e210a513226059782f2e9be4ce90f3f4896a54c9632fbcf502.json` in the preserved revision evidence bundle. Its SHA-256 is `060fe5bf858e95e210a513226059782f2e9be4ce90f3f4896a54c9632fbcf502`. It retains the 110 job IDs and adds the runtime repair fields to four existing YOLO26 jobs.
 
 ## Gate and run the fleet
 
@@ -67,7 +69,7 @@ The controller uses a host JSON file that maps SSH aliases to staged paths and w
   "hosts": {
     "worker-alias": {
       "code_path": "/path/to/clean-worker-release",
-    "code_commit": "f0bd687afdac8f2c8ce7fab5cb8f44f12c148b21",
+      "code_commit": "f0bd687afdac8f2c8ce7fab5cb8f44f12c148b21",
       "data_path": "/path/to/processed",
       "result_root": "/path/to/permanent-revision-storage",
       "venv_python": "/path/to/locked-environment/bin/python",
@@ -76,6 +78,7 @@ The controller uses a host JSON file that maps SSH aliases to staged paths and w
       "checkpoint_scratch_root": "/path/to/temporary-ssd",
       "protocol_sha256": "<SHA-256 of split_manifest.json>",
       "data_verified": true,
+      "paired_environment_sha256": "<verified 96-package inventory SHA-256>",
       "cpu_workers": 1,
       "threads": 4,
       "allowed_gpus": [0]
@@ -94,6 +97,8 @@ uv run --locked python -m src.revision.fleet schedule \
   --manifest "$JOBS" --hosts "$HOSTS" --state "$STATE" --approval "$GATE" --status
 ```
 
+For cross-host adjacency dispatch, the matching core and adjacency host configurations and the adjacency job must carry the same verified `paired_environment_sha256`. Use the digest of the sorted distribution inventory, not the digest of the attestation JSON. The scheduler also requires the recorded GPU model and thread settings to match.
+
 After the source-only diagnostics and recipe review, the gate JSON records `approved: true`, the `approved_methods` list, SHA-256 digests of the exact jobs and split files under `jobs_sha256` and `split_sha256`, the worker release commit under `release_sha`, and every diagnostic job ID under `diagnostic_job_ids`. Each method becomes eligible when all its diagnostics have succeeded and its gate matches the worker release and split. The scheduler preserves separate attempt directories and retries confirmed infrastructure failures up to the third attempt. A model failure remains visible in the state and attempt record.
 
 ## Select and evaluate each source model
@@ -106,7 +111,7 @@ The common evaluator follows Common Objects in Context (COCO) bounding-box evalu
 
 Each attempt preserves the resolved job, worker receipt and completion record, metrics, and predictions. Learned attempts also preserve their checkpoint and epoch logs. The completion records the metrics digest. Per-run metadata ties the results to the annotation and split digests and the selected model or classical parameters. Per-target metadata identifies the COCO subset digest and, for learned runs, the selected checkpoint digest. The finalizer checks these identities against the reconstructed holdouts and the archive.
 
-Add both attempts for each repaired core YOLO26 job to any replay copy. The resolved matrix specifies CPU-only attempt 2 for `core-yolo-DAAN-s0`, `core-yolo-DAAN-s1`, `core-yolo-DARC-s0`, and `core-yolo-MANV-s0`. Each repair loads the checkpoint from GPU attempt 1 and re-runs validation threshold selection and the three target evaluations. The evaluation recipe `yolo-exact-letterbox-v1` maps the box coordinates back through the actual resize and integer padding. Attempt 2 binds the parent checkpoint, metrics, receipt, completion, code commit, and training runtime provenance. The finalizer requires this chain and preserves the original GPU training timing and peak memory alongside the CPU evaluation timing. Each subsequent YOLO26 core or adjacency run must also carry the corrected recipe, whether scored during the original worker attempt or through a verified repair.
+Add both attempts for each repaired core YOLO26 job to any replay copy. Preserve the historical resolved jobs and attempt records byte for byte. Their recorded host names and `evaluation_from` paths describe the original run and need not be accessible to the archive finalizer. For a new repair execution, generate a separate resolved job file with `required_host` and an absolute `evaluation_from` path valid on that host; do not rewrite the historical evidence or claim its frozen job-file hash for the new file. The resolved matrix specifies CPU-only attempt 2 for `core-yolo-DAAN-s0`, `core-yolo-DAAN-s1`, `core-yolo-DARC-s0`, and `core-yolo-MANV-s0`. Each repair loads the checkpoint from GPU attempt 1 and re-runs validation threshold selection and the three target evaluations. The evaluation recipe `yolo-exact-letterbox-v1` maps the box coordinates back through the actual resize and integer padding. Attempt 2 binds the parent checkpoint, metrics, receipt, completion, code commit, and training runtime provenance. The finalizer requires this chain and preserves the original GPU training timing and peak memory alongside the CPU evaluation timing. Each subsequent YOLO26 core or adjacency run must also carry the corrected recipe, whether scored during the original worker attempt or through a verified repair.
 
 ## Archive and replay
 
@@ -123,17 +128,21 @@ Worker completions and metrics carry runtime provenance. Report training and inf
 
 Run the finalizer from a checkout or extracted release at the analysis commit above, with the locked Python environment. The full attempt archive is the input for this replay. A metadata copy from the archive must preserve the `job_id/attempt` layout, both attempts for each repaired YOLO26 job, and the three raw prediction files for every core and adjacency job. The fleet metadata collector follows the current state record for each job, so that output alone leaves the earlier YOLO26 training attempts out of the replay chain. The finalizer writes progress for incomplete archives and requires all expected attempts to pass preflight.
 
-The fixed index-block specification partitions each target holdout into five disjoint blocks in ascending frame-index order. For a test set of size `N`, consecutive boundaries are `floor(j*N/5)` for `j=0,...,5`. The finalizer drops the same block from the local and incoming evaluations before computing each paired gap. The ranges describe sensitivity to test composition on the three fixed sites. On COMECH 2080, `protocol/index-blocks.json` has SHA-256 `ace0f0648228fb183ac52a159ef5072689b7ca01ae399e32a6a27feb4cb63834`. The geometry cache is optional and can be rebuilt from verified predictions and references. The archive's `analysis/geometry-cache` holds reusable per-run reference scores.
+The fixed index-block specification partitions each target holdout into five disjoint blocks in ascending frame-index order. For a test set of size `N`, consecutive boundaries are `floor(j*N/5)` for `j=0,...,5`. The finalizer drops the same block from the local and incoming evaluations before computing each paired gap. The ranges describe sensitivity to test composition on the three fixed sites. The preserved `protocol/index-blocks.json` has SHA-256 `ace0f0648228fb183ac52a159ef5072689b7ca01ae399e32a6a27feb4cb63834`. The geometry cache is optional and can be rebuilt from verified predictions and references. The archive's `analysis/geometry-cache` holds reusable per-run reference scores.
 
 ```sh
-RESULT_ROOT=/mnt/12TB_Drive/dspire/atlantis-master/JACKIE_drone_training/wacv-signal-2027-paper-06/revision
-DATA_ROOT="${RESULT_ROOT%/revision}/assets/processed"
-ARCHIVE_ROOT="$RESULT_ROOT/archive"
-SPLIT="$RESULT_ROOT/protocol/split_manifest.json"
-BLOCKS="$RESULT_ROOT/protocol/index-blocks.json"
-JOBS="$RESULT_ROOT/analysis/manifests/jobs-060fe5bf858e95e210a513226059782f2e9be4ce90f3f4896a54c9632fbcf502.json"
-CACHE_DIR="$RESULT_ROOT/analysis/geometry-cache"
-REPORT_DIR="$RESULT_ROOT/analysis/final-report"
+# Set BUNDLE to the preserved revision evidence bundle and DATA_ROOT to the
+# separately staged, verified processed dataset. OUTPUT_ROOT is writable.
+ARCHIVE_ROOT="$BUNDLE/archive"
+SPLIT="$BUNDLE/protocol/split_manifest.json"
+BLOCKS="$BUNDLE/protocol/index-blocks.json"
+JOBS="$BUNDLE/analysis/manifests/jobs-060fe5bf858e95e210a513226059782f2e9be4ce90f3f4896a54c9632fbcf502.json"
+CACHE_DIR="$OUTPUT_ROOT/geometry-cache"
+REPORT_DIR="$OUTPUT_ROOT/final-report"
+mkdir -p "$CACHE_DIR" "$REPORT_DIR"
+printf '%s  %s\n' 03b7d1d48e5faac7872a04f8fb23580a748ca1521539e99b0e54bf45c7d8f4aa "$SPLIT" | sha256sum -c -
+printf '%s  %s\n' ace0f0648228fb183ac52a159ef5072689b7ca01ae399e32a6a27feb4cb63834 "$BLOCKS" | sha256sum -c -
+printf '%s  %s\n' 060fe5bf858e95e210a513226059782f2e9be4ce90f3f4896a54c9632fbcf502 "$JOBS" | sha256sum -c -
 
 uv run --locked python -m src.revision.finalize \
   --jobs "$JOBS" --runs-dir "$ARCHIVE_ROOT" \
@@ -155,4 +164,39 @@ The second-worker replay of `core-unet-DAAN-s0` loads the archived checkpoint in
 
 ### Matched hardware for adjacency comparisons
 
-Every adjacency job requires the GPU model and thread settings recorded by its matching core fit. For the four CPU-only YOLO evaluation repairs, the controller reads the preserved original training attempt. It waits for that core fit to succeed before dispatch. Cross-host assignment additionally requires the same `paired_environment_sha256` in the job and both host configurations. The verified 96-package inventory is `9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22`; the full host attestation is stored in `protocol/paired-environment-attestation.json` on the archive host. GPU driver versions remain recorded separately. Final paired-run checks compare actual precision, batch size, initialization, and runtime metadata. This policy was installed before any adjacency job started.
+Every adjacency job requires the GPU model and thread settings recorded by its matching core fit. For the four CPU-only YOLO evaluation repairs, the controller reads the preserved original training attempt. It waits for that core fit to succeed before dispatch. Cross-host assignment additionally requires the same `paired_environment_sha256` in the job and both host configurations. The verified 96-package inventory is `9560830229b21ed95345a119b818c8fd4a700a1eeba8d51ca85661f44b60fe22`; the preserved host attestation is `protocol/paired-environment-attestation.json` in the evidence bundle. GPU driver versions remain recorded separately. Final paired-run checks compare actual precision, batch size, initialization, and runtime metadata. This policy was installed before any adjacency job started.
+
+
+## Supplemental analyses
+
+The finalizer and provenance audit above cover the main report. The following programs reproduce additional audits. The archive by itself does not supply every input. Preserve the controller state directory, including `history`, the host configuration and environment attestation, the verified processed images, the selected checkpoints and the relevant Git history. Use the original frozen state and jobs for historical audit. Store outputs in a new writable directory and do not use target scores to choose a source recipe.
+
+```sh
+# Core and adjacency metadata. STATE includes the original attempt history;
+# HOSTS contains the original matching-environment attestations.
+uv run --locked python -m src.revision.audit_pairs \
+  --state "$STATE" --runs-dir "$ARCHIVE_ROOT" --hosts "$HOSTS" \
+  --output "$OUTPUT_ROOT/paired-audit.json"
+
+# Image-similarity candidates use the frozen manifest and verified PNGs.
+uv run --locked python -m src.revision.adjacency_image_audit \
+  --manifest "$SPLIT" --images "$DATA_ROOT/images" \
+  --out "$OUTPUT_ROOT/adjacency-image-audit.json"
+
+# Compare a selected YOLO or RT-DETR checkpoint on source validation only.
+# RUN_WITH_REFERENCE is an archived attempt with its checkpoint, validation
+# subset and raw source-validation predictions.
+uv run --locked python -m src.revision.score_floor_audit \
+  --run-dir "$RUN_WITH_REFERENCE" --ann "$DATA_ROOT/annotations/all.json" \
+  --images "$DATA_ROOT/images" --manifest "$SPLIT" \
+  --output "$OUTPUT_ROOT/score-floor" --threads 4
+
+# This scoped proof needs a Git checkout containing both worker commits.
+uv run --locked python -m src.revision.training_code_proof \
+  --repo "$GIT_REPO" \
+  --baseline 3ed180804db2a3dd24420b51099ee0771ef2db43 \
+  --candidate f0bd687afdac8f2c8ce7fab5cb8f44f12c148b21 \
+  --output "$OUTPUT_ROOT/training-code-equivalence.json"
+```
+
+The proof covers the selected training syntax and supporting files described in its output. It does not establish full software or hardware equivalence. The [Wavelet extension workflow](../src/revision/wavelet_study.md) specifies the original parent attempts, native binary and selection barrier. The [common-GPU timing workflow](revision-inference-timing.md) specifies its checkpoint layout, GPU and runtime requirements. Timing is a new hardware measurement; replaying archived predictions does not reproduce its measured runtime.
