@@ -1,10 +1,11 @@
-
 import pytest
 
 from src.revision import protocol, score_floor_audit
 
 
-def test_source_guard_excludes_targets_and_checks_manifest_images(tmp_path, monkeypatch):
+def test_source_guard_excludes_targets_and_checks_manifest_images(
+    tmp_path, monkeypatch
+):
     run = tmp_path / "run"
     (run / "fit/weights").mkdir(parents=True)
     images = tmp_path / "images"
@@ -20,7 +21,11 @@ def test_source_guard_excludes_targets_and_checks_manifest_images(tmp_path, monk
         "sha256": protocol.sha256_file(image),
     }
     protocol.save_json(manifest, {"images": [record]})
-    gt = {"images": [{"id": 1, "file_name": "frame.png"}], "annotations": [], "categories": []}
+    gt = {
+        "images": [{"id": 1, "file_name": "frame.png"}],
+        "annotations": [],
+        "categories": [],
+    }
     protocol.save_json(run / "validation_gt.json", gt)
     protocol.save_json(run / "validation_raw.json", [])
     checkpoint = run / "fit/weights/best.pt"
