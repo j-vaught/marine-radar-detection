@@ -27,14 +27,12 @@ TRAIN_FILES = {
         "src/revision/ultralytics_models.py",
         "src/revision/protocol.py",
         "src/yolo/config.yaml",
-        "src/data/radar_mask.py",
     ),
     "faster_rcnn": (
         "src/revision/torch_models.py",
         "src/revision/protocol.py",
         "src/faster_rcnn/model.py",
         "src/faster_rcnn/config.yaml",
-        "src/data/radar_mask.py",
     ),
 }
 
