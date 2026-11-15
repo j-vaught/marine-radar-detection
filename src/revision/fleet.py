@@ -204,8 +204,12 @@ def runtime_provenance(job):
         try:
             cpuinfo = Path("/proc/cpuinfo").read_text()
             result["processor"] = next(
-                (line.split(":", 1)[1].strip() for line in cpuinfo.splitlines()
-                 if line.startswith("model name") and ":" in line), ""
+                (
+                    line.split(":", 1)[1].strip()
+                    for line in cpuinfo.splitlines()
+                    if line.startswith("model name") and ":" in line
+                ),
+                "",
             )
         except OSError:
             pass
@@ -272,8 +276,10 @@ def worker(job_path, completion_path, attempt):
                     f"CUDA device mismatch: expected {job['gpu_uuid']}, got {actual}"
                 )
         from src.revision.run import run_job
+        from src.revision.storage import stage_checkpoint_scratch
 
-        run_job(job)
+        with stage_checkpoint_scratch(job):
+            run_job(job)
         metrics = Path(job["out_dir"]) / "metrics.json"
         if not metrics.is_file():
             raise RuntimeError(f"Missing metrics: {metrics}")
@@ -293,6 +299,12 @@ def worker(job_path, completion_path, attempt):
     except Exception as exc:  # noqa: BLE001 - provenance cannot break a completed job
         completion["runtime_provenance_error"] = f"{type(exc).__name__}: {exc}"
     completion["finished"] = now()
+    storage_report = Path(job["out_dir"]) / "checkpoint_scratch_report.json"
+    if storage_report.is_file():
+        completion["checkpoint_storage"] = json.loads(storage_report.read_text())
+        if completion["checkpoint_storage"].get("status") == "archive_failed":
+            print("Checkpoint recovery required; completion withheld", flush=True)
+            return 3
     atomic_json(completion_path, completion)
     return completion["exit_code"]
 
@@ -304,6 +316,9 @@ receipt,completion=sys.argv[1:]
 if not os.path.isfile(receipt):
  print(json.dumps({'unknown':'receipt not present'})); sys.exit()
 r=json.load(open(receipt))
+storage=os.path.join(os.path.dirname(receipt),'checkpoint_scratch_report.json')
+if os.path.isfile(storage) and json.load(open(storage)).get('status')=='archive_failed':
+ print(json.dumps({'receipt':r,'unknown':'checkpoint archival requires recovery'})); sys.exit()
 if os.path.isfile(completion):
  print(json.dumps({'receipt':r,'completion':json.load(open(completion))})); sys.exit()
 pid=r['pid']
@@ -357,6 +372,7 @@ def launch(host, cfg, job, record):
         gpu_uuid=record["gpu_uuid"],
         attempt_nonce=record["nonce"],
         weights_dir=cfg.get("weights_path", root + "/weights"),
+        checkpoint_scratch_root=cfg.get("checkpoint_scratch_root"),
         code_commit=cfg.get("code_commit"),
         protocol_sha256=cfg.get("protocol_sha256"),
     )
@@ -429,17 +445,23 @@ def approved_gate_methods(gate, jobs, records, jobs_sha256):
     ):
         return set()
     if "approved_methods" not in gate:
-        if not all(records.get(job["job_id"], {}).get("state") == "succeeded" for job in diagnostics):
+        if not all(
+            records.get(job["job_id"], {}).get("state") == "succeeded" for job in diagnostics
+        ):
             return set()
         return {job["method"] for job in jobs}
     methods = gate["approved_methods"]
     if not isinstance(methods, list) or any(not isinstance(method, str) for method in methods):
         return set()
     return {
-        method for method in methods
+        method
+        for method in methods
         if any(job["method"] == method for job in diagnostics)
-        and all(records.get(job["job_id"], {}).get("state") == "succeeded"
-                for job in diagnostics if job["method"] == method)
+        and all(
+            records.get(job["job_id"], {}).get("state") == "succeeded"
+            for job in diagnostics
+            if job["method"] == method
+        )
     }
 
 
@@ -600,7 +622,9 @@ def schedule(args):
                     ]
                     if not candidates:
                         continue
-                    job = min(candidates, key=lambda candidate: candidate.get("stage") != "diagnostic")
+                    job = min(
+                        candidates, key=lambda candidate: candidate.get("stage") != "diagnostic"
+                    )
                     if device is not None:
                         try:
                             if device not in gpu_free(host, cfg):

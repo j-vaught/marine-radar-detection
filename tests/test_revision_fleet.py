@@ -119,14 +119,23 @@ def test_runtime_provenance_reports_gpu_and_backend_settings(monkeypatch):
             cudnn=NS(deterministic=True, benchmark=False, allow_tf32=True),
             cuda=NS(matmul=NS(allow_tf32=False)),
         ),
-        cuda=NS(get_device_properties=lambda _: NS(name="GPU model", total_memory=1234, major=8, minor=6)),
+        cuda=NS(
+            get_device_properties=lambda _: NS(
+                name="GPU model", total_memory=1234, major=8, minor=6
+            )
+        ),
     )
     monkeypatch.setitem(sys.modules, "torch", fake)
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-abc")
     monkeypatch.setenv("OMP_NUM_THREADS", "4")
     result = fleet.runtime_provenance({"gpu_uuid": "GPU-abc"})
     assert result["cuda_visible_devices"] == "GPU-abc"
-    assert result["gpu"] == {"uuid": "GPU-abc", "model": "GPU model", "total_memory_bytes": 1234, "compute_capability": [8, 6]}
+    assert result["gpu"] == {
+        "uuid": "GPU-abc",
+        "model": "GPU model",
+        "total_memory_bytes": 1234,
+        "compute_capability": [8, 6],
+    }
     assert result["torch"]["version"] == "2.4.1"
     assert result["torch"]["cuda_version"] == "12.1"
     assert result["torch"]["deterministic_algorithms"] is True
@@ -156,17 +165,30 @@ def test_method_gate_approves_only_completed_diagnostics():
         {"job_id": "u-core", "method": "unet", "stage": "core"},
         {"job_id": "r-core", "method": "rtdetr", "stage": "core"},
     ]
-    records = {"u1": {"state": "succeeded"}, "u2": {"state": "succeeded"},
-               "r1": {"state": "running"}}
-    gate = {"approved": True, "jobs_sha256": "abc", "diagnostic_job_ids": ["u1", "u2", "r1"],
-            "approved_methods": ["unet", "rtdetr"]}
+    records = {
+        "u1": {"state": "succeeded"},
+        "u2": {"state": "succeeded"},
+        "r1": {"state": "running"},
+    }
+    gate = {
+        "approved": True,
+        "jobs_sha256": "abc",
+        "diagnostic_job_ids": ["u1", "u2", "r1"],
+        "approved_methods": ["unet", "rtdetr"],
+    }
     assert fleet.approved_gate_methods(gate, jobs, records, "abc") == {"unet"}
     assert not fleet.approved_gate_methods(gate, jobs, records, "different")
-    assert not fleet.approved_gate_methods({**gate, "diagnostic_job_ids": ["u1", "u2"]}, jobs, records, "abc")
-    assert not fleet.approved_gate_methods({k: v for k, v in gate.items() if k != "approved_methods"}, jobs, records, "abc")
+    assert not fleet.approved_gate_methods(
+        {**gate, "diagnostic_job_ids": ["u1", "u2"]}, jobs, records, "abc"
+    )
+    assert not fleet.approved_gate_methods(
+        {k: v for k, v in gate.items() if k != "approved_methods"}, jobs, records, "abc"
+    )
     records["r1"]["state"] = "succeeded"
     assert fleet.approved_gate_methods(gate, jobs, records, "abc") == {"unet", "rtdetr"}
-    assert fleet.approved_gate_methods({k: v for k, v in gate.items() if k != "approved_methods"}, jobs, records, "abc") == {"unet", "rtdetr"}
+    assert fleet.approved_gate_methods(
+        {k: v for k, v in gate.items() if k != "approved_methods"}, jobs, records, "abc"
+    ) == {"unet", "rtdetr"}
 
 
 def test_schedule_starts_approved_unet_but_blocks_running_rtdetr(tmp_path):
@@ -182,24 +204,57 @@ def test_schedule_starts_approved_unet_but_blocks_running_rtdetr(tmp_path):
     ]
     manifest.write_text(json.dumps(job_list))
     hosts = tmp_path / "hosts.json"
-    hosts.write_text(json.dumps({"hosts": {"h": {"result_root": "/r", "code_path": "/c",
-        "venv_python": "/p", "data_path": "/d", "data_verified": True,
-        "protocol_sha256": "split", "code_commit": "release"}}}))
+    hosts.write_text(
+        json.dumps(
+            {
+                "hosts": {
+                    "h": {
+                        "result_root": "/r",
+                        "code_path": "/c",
+                        "venv_python": "/p",
+                        "data_path": "/d",
+                        "data_verified": True,
+                        "protocol_sha256": "split",
+                        "code_commit": "release",
+                    }
+                }
+            }
+        )
+    )
     approval = tmp_path / "approval.json"
-    approval.write_text(json.dumps({"approved": True, "jobs_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
-        "split_sha256": "split", "release_sha": "release", "diagnostic_job_ids": ["ud", "rd"],
-        "approved_methods": ["unet", "rtdetr"]}))
+    approval.write_text(
+        json.dumps(
+            {
+                "approved": True,
+                "jobs_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+                "split_sha256": "split",
+                "release_sha": "release",
+                "diagnostic_job_ids": ["ud", "rd"],
+                "approved_methods": ["unet", "rtdetr"],
+            }
+        )
+    )
     state = tmp_path / "state"
     state.mkdir()
     (state / "ud.json").write_text(json.dumps({"state": "succeeded"}))
-    (state / "rd.json").write_text(json.dumps({"state": "running", "host": "other", "device": 9,
-        "attempt": 1, "nonce": "n"}))
+    (state / "rd.json").write_text(
+        json.dumps({"state": "running", "host": "other", "device": 9, "attempt": 1, "nonce": "n"})
+    )
     status = {"receipt": {"job_id": "rd", "attempt": 1, "nonce": "n"}, "alive": True}
-    args = SimpleNamespace(state=state, status=False, manifest=manifest, hosts=hosts,
-                           approval=approval, once=True, poll=60)
-    with (patch.object(fleet, "remote_status", return_value=status),
-          patch.object(fleet, "gpu_free", return_value=[(0, "GPU-0"), (1, "GPU-1")]),
-          patch.object(fleet, "launch") as launch):
+    args = SimpleNamespace(
+        state=state,
+        status=False,
+        manifest=manifest,
+        hosts=hosts,
+        approval=approval,
+        once=True,
+        poll=60,
+    )
+    with (
+        patch.object(fleet, "remote_status", return_value=status),
+        patch.object(fleet, "gpu_free", return_value=[(0, "GPU-0"), (1, "GPU-1")]),
+        patch.object(fleet, "launch") as launch,
+    ):
         fleet.schedule(args)
     assert launch.call_count == 1
     assert launch.call_args.args[2]["job_id"] == "uc"
