@@ -84,6 +84,7 @@ def test_init_uses_pretrained_architecture_and_records_identity(tmp_path, monkey
         calls.append(kwargs)
         return Toy()
 
+    monkeypatch.setattr(trainer, "_configure_threads", lambda: {"test": True})
     monkeypatch.setattr(faster_model, "build_model", build)
     monkeypatch.setattr(
         trainer, "_verified_pretrained_asset", lambda _: ("asset-url", tmp_path / "asset")
@@ -236,6 +237,7 @@ def test_diagnostic_runs_exact_updates_without_target_scoring(tmp_path, monkeypa
         calls.append(kwargs)
         return TinyModel()
 
+    monkeypatch.setattr(trainer, "_configure_threads", lambda: {"test": True})
     monkeypatch.setattr(faster_model, "build_model", build)
     monkeypatch.setattr(
         trainer, "_verified_pretrained_asset", lambda _: ("url", tmp_path / "asset")
@@ -271,6 +273,7 @@ def test_diagnostic_runs_exact_updates_without_target_scoring(tmp_path, monkeypa
         "torchvision_version": torchvision.__version__,
         "pretrained_weights_sha256": "x",
         "architecture": trainer._architecture_identity(model),
+        "thread_policy": {"test": True},
         "frozen_protocol_sha256": trainer.PROTOCOL_SHA,
         "model_config_sha256": trainer._json_digest(trainer._cfg()),
         "code_commit": "a" * 40,
@@ -318,3 +321,25 @@ def test_validation_disables_inherited_autocast():
     loader = [([torch.ones(1)], [{"boxes": torch.zeros((0, 4))}], [{}])]
     with torch.autocast(device_type="cpu", dtype=torch.bfloat16):
         assert trainer._validation_loss(AutocastCheck(), loader, torch.device("cpu"), 3) == 1.0
+
+
+@pytest.mark.skipif(
+    __import__("sys").platform == "darwin", reason="Local macOS Torch may lack OpenMP"
+)
+def test_main_and_worker_thread_policy_in_fresh_process():
+    import subprocess
+    import sys
+
+    program = """
+import cv2
+import torch
+from src.revision.darc_train import _configure_threads, _loader
+class Probe(torch.utils.data.Dataset):
+    def __len__(self): return 2
+    def __getitem__(self, index): return torch.get_num_threads(), cv2.getNumThreads()
+policy = _configure_threads()
+assert (policy['torch_intraop_threads'],policy['torch_interop_threads'],policy['opencv_threads']) == (8,1,1)
+for a,b in _loader(Probe(),1,2,0):
+    assert a[0] == 1 and b[0] == 1
+"""
+    subprocess.run([sys.executable, "-c", program], check=True, timeout=60)

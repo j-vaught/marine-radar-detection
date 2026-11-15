@@ -80,6 +80,35 @@ def _atomic_save(value, path):
     os.replace(tmp, path)
 
 
+def _configure_threads():
+    """Set the frozen main-process thread policy before any parallel work."""
+    torch.set_num_threads(8)
+    if torch.get_num_interop_threads() != 1:
+        torch.set_num_interop_threads(1)
+    cv2.setNumThreads(1)
+    policy = {
+        "torch_intraop_threads": torch.get_num_threads(),
+        "torch_interop_threads": torch.get_num_interop_threads(),
+        "opencv_threads": cv2.getNumThreads(),
+        "worker_torch_intraop_threads": 1,
+        "worker_opencv_threads": 1,
+    }
+    if (
+        policy["torch_intraop_threads"],
+        policy["torch_interop_threads"],
+        policy["opencv_threads"],
+    ) != (8, 1, 1):
+        raise RuntimeError("Failed to enforce DARC thread policy")
+    return policy
+
+
+def _worker_init(_worker_id):
+    """Check PyTorch's worker limit and explicitly limit OpenCV in each worker."""
+    cv2.setNumThreads(1)
+    if torch.get_num_threads() != 1 or cv2.getNumThreads() != 1:
+        raise RuntimeError("DataLoader worker thread policy was not enforced")
+
+
 def _learning_rate(update):
     if update < 1:
         raise ValueError("Updates are one-indexed")
@@ -147,6 +176,7 @@ def _verified_pretrained_asset(expected):
 
 def initialize(job):
     """Create one portable seeded initial state using a verified local asset."""
+    thread_policy = _configure_threads()
     from ..faster_rcnn.model import build_model
 
     if job["source"] not in ("DAAN", "DARC", "MANV") or int(job["seed"]) not in (0, 1, 2):
@@ -181,6 +211,7 @@ def initialize(job):
         "torch_version": torch.__version__,
         "torchvision_version": torchvision.__version__,
         "architecture": _architecture_identity(model),
+        "thread_policy": thread_policy,
     }
     protocol.save_json(meta_path, meta)
     return meta
@@ -206,6 +237,7 @@ def _loader(ds, batch_size, workers, seed):
         collate_fn=_collate,
         generator=generator,
         persistent_workers=workers > 0,
+        worker_init_fn=_worker_init,
     )
 
 
@@ -386,6 +418,7 @@ def _source_audit(stats, effective_hw):
 
 def run(job):
     """Run one fixed-update fit and, after source-only selection, fixed-target scoring."""
+    thread_policy = _configure_threads()
     import torchvision
 
     from ..faster_rcnn.model import build_model
@@ -435,6 +468,8 @@ def run(job):
         meta["initial_state_sha256"],
     ) != (job["source"], int(job["seed"]), job["initial_tensor_sha256"], initial_file_hash):
         raise ValueError("Initialization metadata mismatch")
+    if meta.get("thread_policy") != thread_policy:
+        raise ValueError("Initialization and fit thread policies differ")
     if (meta["frozen_protocol_sha256"], meta["model_config_sha256"], meta["code_commit"]) != (
         PROTOCOL_SHA,
         _json_digest(_cfg()),
@@ -511,6 +546,7 @@ def run(job):
         "openblas_num_threads": os.environ.get("OPENBLAS_NUM_THREADS"),
         "python_version": platform.python_version(),
         "workers": workers,
+        "thread_policy": thread_policy,
         "torch_threads": torch.get_num_threads(),
         "torch_interop_threads": torch.get_num_interop_threads(),
         "cuda_matmul_allow_tf32": torch.backends.cuda.matmul.allow_tf32,
@@ -753,6 +789,7 @@ def run(job):
         "size_control": bool(job.get("size_control")),
         "protocol_id": PROTOCOL_ID,
         "frozen_protocol_sha256": PROTOCOL_SHA,
+        "thread_policy": thread_policy,
         "manifest_sha256": MANIFEST_SHA,
         "annotation_sha256": ANNOTATION_SHA,
         "initial_state_sha256": initial_file_hash,
