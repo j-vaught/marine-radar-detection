@@ -198,6 +198,23 @@ def run_job(job: dict) -> dict:
         cos_lr=t.get("lr_scheduler", "").lower() in ("cosineannealinglr", "cosine"),
         **aug,
     )
+    amp_probe_hash = None
+    if is_cuda and args['amp']:
+        # Ultralytics 8.4.14 checks AMP using this auxiliary model in the cwd.
+        # Stage it per attempt so the framework never races to download it.
+        weights_dir = job.get('weights_dir') or job.get('weights_cache')
+        if not weights_dir:
+            raise ValueError('AMP requires a staged weights_dir or weights_cache')
+        probe = Path(weights_dir) / 'yolo26n.pt'
+        if not probe.is_file():
+            raise FileNotFoundError(f'AMP probe checkpoint missing: {probe}')
+        destination = Path.cwd() / probe.name
+        amp_probe_hash = protocol.sha256_file(probe)
+        if destination.exists():
+            if protocol.sha256_file(destination) != amp_probe_hash:
+                raise ValueError(f'AMP probe differs from staged weights: {destination}')
+        else:
+            shutil.copy2(probe, destination)
     state = {}
 
     def capture_initial(trainer):
@@ -328,6 +345,7 @@ def run_job(job: dict) -> dict:
         "initial_state_sha256": state["initial_state_sha256"],
         "architecture": state["architecture"],
         "gpu_uuid": gpu_uuid,
+        "amp_probe_sha256": amp_probe_hash,
         "determinism_note": "RT-DETR CUDA grid_sample backward is nondeterministic"
         if method == "rtdetr"
         else "deterministic algorithms requested",
