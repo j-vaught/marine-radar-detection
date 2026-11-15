@@ -1,0 +1,2924 @@
+[
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "diagnostic-unet-DAAN-s0",
+    "method": "unet",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 20,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "diagnostic-unet-DARC-s0",
+    "method": "unet",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 20,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "diagnostic-unet-MANV-s0",
+    "method": "unet",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 20,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 30
+      }
+    },
+    "job_id": "diagnostic-faster_rcnn-DAAN-s0",
+    "method": "faster_rcnn",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 20,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 30
+      }
+    },
+    "job_id": "diagnostic-faster_rcnn-DARC-s0",
+    "method": "faster_rcnn",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 20,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 30
+      }
+    },
+    "job_id": "diagnostic-faster_rcnn-MANV-s0",
+    "method": "faster_rcnn",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 20,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "diagnostic-yolo-DAAN-s0",
+    "method": "yolo",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 40,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "diagnostic-yolo-DARC-s0",
+    "method": "yolo",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 40,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "diagnostic-yolo-MANV-s0",
+    "method": "yolo",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 40,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "diagnostic-rtdetr-DAAN-s0",
+    "method": "rtdetr",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 40,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "diagnostic-rtdetr-DARC-s0",
+    "method": "rtdetr",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 40,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "diagnostic-rtdetr-MANV-s0",
+    "method": "rtdetr",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 40,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "candidates": [
+        {
+          "method": "CA",
+          "guard": 10,
+          "ref": 25,
+          "pfa": 0.001,
+          "min_area": 20,
+          "os_k": null
+        }
+      ]
+    },
+    "job_id": "diagnostic-ca_cfar-DAAN-s0",
+    "method": "ca_cfar",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "candidates": [
+        {
+          "method": "OS",
+          "guard": 10,
+          "ref": 25,
+          "pfa": 0.001,
+          "min_area": 20,
+          "os_k": 0.75
+        }
+      ]
+    },
+    "job_id": "diagnostic-os_cfar-DAAN-s0",
+    "method": "os_cfar",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "candidates": [
+        {
+          "min_area": 20,
+          "max_area": 5000,
+          "dilation": 0,
+          "box_padding": 0,
+          "max_eccentricity": 1.0
+        }
+      ]
+    },
+    "job_id": "diagnostic-otsu-DAAN-s0",
+    "method": "otsu",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "candidates": [
+        {
+          "block_size": 96,
+          "seed_threshold_factor": 1.5,
+          "region_grow_threshold": 0.7,
+          "min_area": 20,
+          "max_area": 5000,
+          "dilation": 0,
+          "box_padding": 0,
+          "max_eccentricity": 1.0
+        }
+      ]
+    },
+    "job_id": "diagnostic-ss_otsu-DAAN-s0",
+    "method": "ss_otsu",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [],
+    "config_overrides": {
+      "candidates": [
+        {
+          "level": 2,
+          "threshold_sigma": 6.0,
+          "min_area": 30,
+          "max_area": 3000,
+          "dilation": 0,
+          "box_padding": 0
+        }
+      ]
+    },
+    "job_id": "diagnostic-wavelet-DAAN-s0",
+    "method": "wavelet",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "diagnostic",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": true,
+    "train_limit": 32,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-DAAN-s0",
+    "method": "unet",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-DAAN-s1",
+    "method": "unet",
+    "source": "DAAN",
+    "seed": 1,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-DAAN-s2",
+    "method": "unet",
+    "source": "DAAN",
+    "seed": 2,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-DAAN-s3",
+    "method": "unet",
+    "source": "DAAN",
+    "seed": 3,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-DAAN-s4",
+    "method": "unet",
+    "source": "DAAN",
+    "seed": 4,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-DARC-s0",
+    "method": "unet",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-DARC-s1",
+    "method": "unet",
+    "source": "DARC",
+    "seed": 1,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-DARC-s2",
+    "method": "unet",
+    "source": "DARC",
+    "seed": 2,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-DARC-s3",
+    "method": "unet",
+    "source": "DARC",
+    "seed": 3,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-DARC-s4",
+    "method": "unet",
+    "source": "DARC",
+    "seed": 4,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-MANV-s0",
+    "method": "unet",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-MANV-s1",
+    "method": "unet",
+    "source": "MANV",
+    "seed": 1,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-MANV-s2",
+    "method": "unet",
+    "source": "MANV",
+    "seed": 2,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-MANV-s3",
+    "method": "unet",
+    "source": "MANV",
+    "seed": 3,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-unet-MANV-s4",
+    "method": "unet",
+    "source": "MANV",
+    "seed": 4,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-DAAN-s0",
+    "method": "faster_rcnn",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-DAAN-s1",
+    "method": "faster_rcnn",
+    "source": "DAAN",
+    "seed": 1,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-DAAN-s2",
+    "method": "faster_rcnn",
+    "source": "DAAN",
+    "seed": 2,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-DAAN-s3",
+    "method": "faster_rcnn",
+    "source": "DAAN",
+    "seed": 3,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-DAAN-s4",
+    "method": "faster_rcnn",
+    "source": "DAAN",
+    "seed": 4,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-DARC-s0",
+    "method": "faster_rcnn",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-DARC-s1",
+    "method": "faster_rcnn",
+    "source": "DARC",
+    "seed": 1,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-DARC-s2",
+    "method": "faster_rcnn",
+    "source": "DARC",
+    "seed": 2,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-DARC-s3",
+    "method": "faster_rcnn",
+    "source": "DARC",
+    "seed": 3,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-DARC-s4",
+    "method": "faster_rcnn",
+    "source": "DARC",
+    "seed": 4,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-MANV-s0",
+    "method": "faster_rcnn",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-MANV-s1",
+    "method": "faster_rcnn",
+    "source": "MANV",
+    "seed": 1,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-MANV-s2",
+    "method": "faster_rcnn",
+    "source": "MANV",
+    "seed": 2,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-MANV-s3",
+    "method": "faster_rcnn",
+    "source": "MANV",
+    "seed": 3,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "core-faster_rcnn-MANV-s4",
+    "method": "faster_rcnn",
+    "source": "MANV",
+    "seed": 4,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-DAAN-s0",
+    "method": "yolo",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-DAAN-s1",
+    "method": "yolo",
+    "source": "DAAN",
+    "seed": 1,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-DAAN-s2",
+    "method": "yolo",
+    "source": "DAAN",
+    "seed": 2,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-DAAN-s3",
+    "method": "yolo",
+    "source": "DAAN",
+    "seed": 3,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-DAAN-s4",
+    "method": "yolo",
+    "source": "DAAN",
+    "seed": 4,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-DARC-s0",
+    "method": "yolo",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-DARC-s1",
+    "method": "yolo",
+    "source": "DARC",
+    "seed": 1,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-DARC-s2",
+    "method": "yolo",
+    "source": "DARC",
+    "seed": 2,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-DARC-s3",
+    "method": "yolo",
+    "source": "DARC",
+    "seed": 3,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-DARC-s4",
+    "method": "yolo",
+    "source": "DARC",
+    "seed": 4,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-MANV-s0",
+    "method": "yolo",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-MANV-s1",
+    "method": "yolo",
+    "source": "MANV",
+    "seed": 1,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-MANV-s2",
+    "method": "yolo",
+    "source": "MANV",
+    "seed": 2,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-MANV-s3",
+    "method": "yolo",
+    "source": "MANV",
+    "seed": 3,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-yolo-MANV-s4",
+    "method": "yolo",
+    "source": "MANV",
+    "seed": 4,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-DAAN-s0",
+    "method": "rtdetr",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-DAAN-s1",
+    "method": "rtdetr",
+    "source": "DAAN",
+    "seed": 1,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-DAAN-s2",
+    "method": "rtdetr",
+    "source": "DAAN",
+    "seed": 2,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-DAAN-s3",
+    "method": "rtdetr",
+    "source": "DAAN",
+    "seed": 3,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-DAAN-s4",
+    "method": "rtdetr",
+    "source": "DAAN",
+    "seed": 4,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-DARC-s0",
+    "method": "rtdetr",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-DARC-s1",
+    "method": "rtdetr",
+    "source": "DARC",
+    "seed": 1,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-DARC-s2",
+    "method": "rtdetr",
+    "source": "DARC",
+    "seed": 2,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-DARC-s3",
+    "method": "rtdetr",
+    "source": "DARC",
+    "seed": 3,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-DARC-s4",
+    "method": "rtdetr",
+    "source": "DARC",
+    "seed": 4,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-MANV-s0",
+    "method": "rtdetr",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-MANV-s1",
+    "method": "rtdetr",
+    "source": "MANV",
+    "seed": 1,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-MANV-s2",
+    "method": "rtdetr",
+    "source": "MANV",
+    "seed": 2,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-MANV-s3",
+    "method": "rtdetr",
+    "source": "MANV",
+    "seed": 3,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "core-rtdetr-MANV-s4",
+    "method": "rtdetr",
+    "source": "MANV",
+    "seed": 4,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 30,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "adjacency-faster_rcnn-DAAN-s0",
+    "method": "faster_rcnn",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "adjacency-faster_rcnn-DAAN-s1",
+    "method": "faster_rcnn",
+    "source": "DAAN",
+    "seed": 1,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "adjacency-faster_rcnn-DAAN-s2",
+    "method": "faster_rcnn",
+    "source": "DAAN",
+    "seed": 2,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "adjacency-faster_rcnn-DARC-s0",
+    "method": "faster_rcnn",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "adjacency-faster_rcnn-DARC-s1",
+    "method": "faster_rcnn",
+    "source": "DARC",
+    "seed": 1,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "adjacency-faster_rcnn-DARC-s2",
+    "method": "faster_rcnn",
+    "source": "DARC",
+    "seed": 2,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "adjacency-faster_rcnn-MANV-s0",
+    "method": "faster_rcnn",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "adjacency-faster_rcnn-MANV-s1",
+    "method": "faster_rcnn",
+    "source": "MANV",
+    "seed": 1,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2,
+        "lr_step_size": 20
+      }
+    },
+    "job_id": "adjacency-faster_rcnn-MANV-s2",
+    "method": "faster_rcnn",
+    "source": "MANV",
+    "seed": 2,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 60,
+    "patience": 8,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "adjacency-yolo-DAAN-s0",
+    "method": "yolo",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "adjacency-yolo-DAAN-s1",
+    "method": "yolo",
+    "source": "DAAN",
+    "seed": 1,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "adjacency-yolo-DAAN-s2",
+    "method": "yolo",
+    "source": "DAAN",
+    "seed": 2,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "adjacency-yolo-DARC-s0",
+    "method": "yolo",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "adjacency-yolo-DARC-s1",
+    "method": "yolo",
+    "source": "DARC",
+    "seed": 1,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "adjacency-yolo-DARC-s2",
+    "method": "yolo",
+    "source": "DARC",
+    "seed": 2,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "adjacency-yolo-MANV-s0",
+    "method": "yolo",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "adjacency-yolo-MANV-s1",
+    "method": "yolo",
+    "source": "MANV",
+    "seed": 1,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {
+      "training": {
+        "workers": 2
+      }
+    },
+    "job_id": "adjacency-yolo-MANV-s2",
+    "method": "yolo",
+    "source": "MANV",
+    "seed": 2,
+    "condition": "adjacency",
+    "stage": "adjacency",
+    "initialization": "pretrained",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-ca_cfar-DAAN-s0",
+    "method": "ca_cfar",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-ca_cfar-DARC-s0",
+    "method": "ca_cfar",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-ca_cfar-MANV-s0",
+    "method": "ca_cfar",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-os_cfar-DAAN-s0",
+    "method": "os_cfar",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-os_cfar-DARC-s0",
+    "method": "os_cfar",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-os_cfar-MANV-s0",
+    "method": "os_cfar",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-otsu-DAAN-s0",
+    "method": "otsu",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-otsu-DARC-s0",
+    "method": "otsu",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-otsu-MANV-s0",
+    "method": "otsu",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-ss_otsu-DAAN-s0",
+    "method": "ss_otsu",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-ss_otsu-DARC-s0",
+    "method": "ss_otsu",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-ss_otsu-MANV-s0",
+    "method": "ss_otsu",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-wavelet-DAAN-s0",
+    "method": "wavelet",
+    "source": "DAAN",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-wavelet-DARC-s0",
+    "method": "wavelet",
+    "source": "DARC",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  },
+  {
+    "ann": "{data}/annotations/all.json",
+    "images": "{data}/images",
+    "manifest": "{root}/protocol/split_manifest.json",
+    "eval_targets": [
+      "DAAN",
+      "DARC",
+      "MANV"
+    ],
+    "config_overrides": {},
+    "job_id": "core-wavelet-MANV-s0",
+    "method": "wavelet",
+    "source": "MANV",
+    "seed": 0,
+    "condition": "buffered",
+    "stage": "core",
+    "initialization": "scratch",
+    "epochs": 100,
+    "patience": 12,
+    "overfit": false,
+    "native_otsu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/otsu-cpu/release/otsu",
+    "native_wavelet_cpu": "{root}/native/6e475f71f4a6c7a8760f67f52965d3b66d53fbcb/wavelet-cpu/release/wavelet"
+  }
+]
