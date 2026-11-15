@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import datetime as dt
 import fcntl
 import hashlib
@@ -11,6 +12,7 @@ import math
 import os
 import platform
 import shlex
+import stat
 import subprocess
 import sys
 import time
@@ -33,14 +35,21 @@ def atomic_json(path, value):
     os.replace(tmp, path)
 
 
+def ssh_options(host):
+    # Short fixed path avoids platform-specific UNIX socket length limits.
+    directory = Path(f"/tmp/revision-ssh-{os.getuid()}")
+    directory.mkdir(mode=0o700, exist_ok=True)
+    info = directory.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+        raise OSError(f"Unsafe SSH control directory: {directory}")
+    socket = directory / hashlib.sha256(host.encode()).hexdigest()[:20]
+    return ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ControlMaster=auto",
+            "-o", "ControlPersist=120", "-o", f"ControlPath={socket}"]
+
+
 def ssh(host, command, timeout=30):
-    return subprocess.run(
-        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", host, command],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=True,
-    ).stdout
+    return subprocess.run(["ssh", *ssh_options(host), host, command],
+                          capture_output=True, text=True, timeout=timeout, check=True).stdout
 
 
 def quote_cmd(parts):
@@ -50,14 +59,15 @@ def quote_cmd(parts):
 def gpu_free(host, config):
     """GPU must have no compute process, irrespective of process ownership."""
     prefix = [config["wrapper"]] if config.get("wrapper") else []
-    cmd = prefix + ["nvidia-smi", "--query-gpu=index,uuid", "--format=csv,noheader,nounits"]
-    all_gpu = ssh(host, quote_cmd(cmd)).strip().splitlines()
-    cmd = prefix + [
-        "nvidia-smi",
-        "--query-compute-apps=gpu_uuid,pid",
-        "--format=csv,noheader,nounits",
-    ]
-    active = ssh(host, quote_cmd(cmd)).strip().splitlines()
+    inventory = prefix + ["nvidia-smi", "--query-gpu=index,uuid", "--format=csv,noheader,nounits"]
+    processes = prefix + ["nvidia-smi", "--query-compute-apps=gpu_uuid,pid", "--format=csv,noheader,nounits"]
+    marker = "__REVISION_PROCESS_LIST__"
+    command = quote_cmd(inventory) + " && printf '\n" + marker + "\n' && " + quote_cmd(processes)
+    output = ssh(host, command)
+    parts = output.split(marker)
+    if len(parts) != 2:
+        raise ValueError("GPU query output missing delimiter")
+    all_gpu, active = (part.strip().splitlines() for part in parts)
     busy = {line.split(",")[0].strip() for line in active if line.strip()}
     allowed = config.get("allowed_gpus")
     return [
@@ -355,6 +365,16 @@ def schedule(args):
         hosts = json.loads(args.hosts.read_text())["hosts"]
         approved = False
         records = {}
+        pending_status = {}
+        for job in jobs:
+            path = state_dir / (job["job_id"] + ".json")
+            if path.exists():
+                record = json.loads(path.read_text())
+                if record["state"] in {"running", "launching", "uncertain"}:
+                    pending_status[job["job_id"]] = record
+        with ThreadPoolExecutor(max_workers=min(16, max(1, len(pending_status)))) as executor:
+            futures = {job_id: executor.submit(remote_status, record["host"], record)
+                       for job_id, record in pending_status.items()}
         for job in jobs:
             path = state_dir / (job["job_id"] + ".json")
             if not path.exists():
@@ -362,7 +382,7 @@ def schedule(args):
             record = json.loads(path.read_text())
             if record["state"] in {"running", "launching", "uncertain"}:
                 try:
-                    status = remote_status(record["host"], record)
+                    status = futures[job["job_id"]].result()
                     receipt = status.get("receipt")
                     if receipt and not matches(record, receipt, job["job_id"]):
                         record.update(state="uncertain", error="receipt identity mismatch")
@@ -417,22 +437,15 @@ def schedule(args):
         else:
             gate = {}
         if not args.status:
-            used = {
-                (r.get("host"), r.get("device"))
-                for r in records.values()
-                if r["state"] in {"running", "uncertain", "launching"}
-            }
-            for host, cfg in hosts.items():
-                if (
-                    not cfg.get("data_verified")
-                    or not cfg.get("code_path")
-                    or not cfg.get("protocol_sha256")
-                    or not cfg.get("code_commit")
-                    or not cfg.get("enabled", True)
-                ):
-                    continue
+            used = {(r.get("host"), r.get("device")) for r in records.values() if r["state"] in {"running", "uncertain", "launching"}}
+            eligible = {host: cfg for host, cfg in hosts.items()
+                        if cfg.get("data_verified") and cfg.get("code_path") and cfg.get("protocol_sha256")
+                        and cfg.get("code_commit") and cfg.get("enabled", True)}
+            with ThreadPoolExecutor(max_workers=min(16, max(1, len(eligible)))) as executor:
+                gpu_queries = {host: executor.submit(gpu_free, host, cfg) for host, cfg in eligible.items()}
+            for host, cfg in eligible.items():
                 try:
-                    free = gpu_free(host, cfg)
+                    free = gpu_queries[host].result()
                 except (subprocess.SubprocessError, OSError, ValueError) as exc:
                     print(f"{now()} {host}: GPU check failed: {exc}", flush=True)
                     free = []
@@ -530,6 +543,7 @@ def main():
     c = sub.add_parser("collect", help="Collect finished attempts independently of scheduling")
     c.add_argument("--state", type=Path, required=True)
     c.add_argument("--dest", type=Path, required=True)
+    c.add_argument("--metadata-only", action="store_true", help="Collect JSON, CSV and logs without model weights or image data")
     args = p.parse_args()
     if args.mode == "worker":
         sys.exit(worker(args.job, args.completion, args.attempt))
@@ -540,9 +554,11 @@ def main():
                 continue
             dest = args.dest / path.stem / str(record["attempt"])
             dest.mkdir(parents=True, exist_ok=True)
-            subprocess.run(
-                ["rsync", "-a", f"{record['host']}:{record['out']}/", str(dest) + "/"], check=True
-            )
+            rsync = ["rsync", "-a", "-e", quote_cmd(["ssh", *ssh_options(record["host"])])]
+            if args.metadata_only:
+                rsync += ["--include=*/", "--include=*.json", "--include=*.csv",
+                          "--include=*.log", "--include=command.txt", "--exclude=*"]
+            subprocess.run([*rsync, f"{record['host']}:{record['out']}/", str(dest) + "/"], check=True)
         return
     schedule(args)
 
