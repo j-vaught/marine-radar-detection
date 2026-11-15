@@ -3,6 +3,7 @@
 import argparse
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -292,13 +293,16 @@ def test_runtime_uses_public_numerical_policy_keys(monkeypatch):
     algorithms = []
     monkeypatch.setattr(torch, "use_deterministic_algorithms", algorithms.append)
     monkeypatch.setattr(torch, "are_deterministic_algorithms_enabled", lambda: True)
-    for backend, attribute in [
-        (torch.backends.cuda.matmul, "allow_tf32"),
-        (torch.backends.cudnn, "allow_tf32"),
-        (torch.backends.cudnn, "deterministic"),
-        (torch.backends.cudnn, "benchmark"),
-    ]:
-        monkeypatch.setattr(backend, attribute, False)
+    # Older PyTorch exposes these flags through dynamic descriptors. Replace
+    # their test-only container so pytest never deletes a native backend flag.
+    monkeypatch.setattr(
+        torch,
+        "backends",
+        SimpleNamespace(
+            cuda=SimpleNamespace(matmul=SimpleNamespace(allow_tf32=False)),
+            cudnn=SimpleNamespace(allow_tf32=False, deterministic=False, benchmark=False),
+        ),
+    )
     run = {
         "scope": "darc",
         "numerical_policy": {
