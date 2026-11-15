@@ -119,3 +119,39 @@ def test_wrong_gpu_and_unapproved_scoring_never_launch(tmp_path):
     with patch.object(d.fleet, "gpu_free", return_value=[(0, "GPU-a", d.GPU_MODEL)]), patch.object(d, "launch") as launch:
         d.schedule(args)
     assert launch.call_count == 1 and launch.call_args.args[2]["stage"] == "diagnostic"
+
+
+def test_factory_includes_frozen_protocol_contract():
+    job = d.make_jobs("frozen-digest", catalog())["jobs"][0]
+    assert job["frozen_protocol"] == "{root}/staging/frozen-inputs-14a06aad/processed-frozen-protocol.json"
+    assert job["frozen_protocol_sha256"] == "frozen-digest"
+
+
+def test_source_seed_block_is_pinned_to_one_host(tmp_path):
+    base = tmp_path / "darc-v2" / "controller"
+    base.mkdir(parents=True)
+    state = base / "state"
+    jobs_path = base / "jobs.json"
+    spec = d.make_jobs("protocol", catalog())
+    spec.update(split_sha256="split", annotations_sha256="ann")
+    jobs_path.write_text(json.dumps(spec))
+    def cfg(host):
+        return {"enabled": True, "data_verified": True, "initialization_verified": True,
+            "code_commit": "release", "runtime_profile_sha256": "profile", "threads": 8,
+            "protocol_sha256": "split", "annotations_sha256": "ann", "result_root": "/" + host + "/darc-v2",
+            "code_path": "/" + host + "/darc-v2/releases/release", "venv_python": "/p", "data_path": "/" + host + "/data"}
+    hosts = base / "hosts.json"
+    hosts.write_text(json.dumps({"hosts": {"comech-2422": cfg("h1"), "cocesr-1141": cfg("h2")}}))
+    diag = base / "diag.json"
+    diag.write_text(json.dumps({"approved": True, "kind": "diagnostic", "jobs_sha256": d.digest(jobs_path),
+        "protocol_sha256": "protocol", "release_sha": "release", "runtime_profile_sha256": "profile"}))
+    args = SimpleNamespace(jobs=jobs_path, hosts=hosts, state=state, diagnostic_gate=diag,
+        scoring_gate=base/"score.json", release="release", profile="profile", once=True, status=False, poll=60)
+    with patch.object(d.fleet, "gpu_free", return_value=[(0, "GPU-a", d.GPU_MODEL), (1, "GPU-b", d.GPU_MODEL)]), patch.object(d, "launch") as launch:
+        d.schedule(args)
+    assignments = {}
+    for call in launch.call_args_list:
+        host, _, job, _, _ = call.args
+        assignments.setdefault((job["source"], job["seed"]), set()).add(host)
+    assert launch.call_count == 4
+    assert all(len(assigned) == 1 for assigned in assignments.values())

@@ -43,6 +43,8 @@ def make_jobs(protocol, catalog):
             common = {"method": "faster_rcnn", "source": source, "seed": seed,
                       "condition": "buffered", "ann": "{data}/annotations/all.json",
                       "images": "{data}/images", "manifest": "{root}/protocol/split_manifest.json",
+                      "frozen_protocol": "{root}/staging/frozen-inputs-14a06aad/processed-frozen-protocol.json",
+                      "frozen_protocol_sha256": protocol,
                       "initial_state": init["path"], "initial_state_sha256": init["sha256"],
                       "initial_tensor_sha256": init["tensor_sha256"]}
             for scale, intensity in ARMS:
@@ -91,6 +93,7 @@ def worker(job_path, completion_path, attempt):
         if job["stage"] == "diagnostic" and job.get("eval_targets"):
             raise ValueError("diagnostics must not score targets")
         for field, expected in (("manifest", job["split_sha256"]),
+                                ("frozen_protocol", job["frozen_protocol_sha256"]),
                                 ("ann", job["annotations_sha256"]),
                                 ("initial_state", job["initial_state_sha256"])):
             if digest(job[field]) != expected:
@@ -116,6 +119,7 @@ def worker(job_path, completion_path, attempt):
         result.update(exit_code=1, error=f"{type(exc).__name__}: {exc}")
     try:
         result["runtime_provenance"] = fleet.runtime_provenance(job)
+        result["runtime_provenance"]["thread_environment"]["OPENBLAS_NUM_THREADS"] = os.environ.get("OPENBLAS_NUM_THREADS")
     except Exception as exc:  # noqa: BLE001
         result["provenance_error"] = f"{type(exc).__name__}: {exc}"
     result["finished"] = fleet.now()
@@ -145,12 +149,12 @@ open(os.path.join(out,'command.txt'),'w').write(json.dumps(args))
 f=open(os.path.join(out,'worker.log'),'ab',buffering=0)
 env=os.environ.copy()
 env.update(PYTHONPATH=code,CUDA_DEVICE_ORDER='PCI_BUS_ID',CUDA_VISIBLE_DEVICES=gpu,
-           OMP_NUM_THREADS=threads,MKL_NUM_THREADS=threads,RAYON_NUM_THREADS=threads,TORCH_HOME=torch_home)
+           OMP_NUM_THREADS=threads,MKL_NUM_THREADS=threads,RAYON_NUM_THREADS=threads,OPENBLAS_NUM_THREADS=threads,TORCH_HOME=torch_home)
 p=subprocess.Popen(args,cwd=out,env=env,stdin=subprocess.DEVNULL,stdout=f,stderr=subprocess.STDOUT,start_new_session=True)
 print(p.pid)
 '''
     fleet.ssh(host, fleet.quote_cmd([cfg["venv_python"], "-c", script, out, code,
-        json.dumps(resolved), json.dumps(run), record["gpu_uuid"], str(cfg.get("threads", 4)),
+        json.dumps(resolved), json.dumps(run), record["gpu_uuid"], str(cfg.get("threads", 8)),
         cfg.get("torch_home", cfg["result_root"] + "/torch-cache")]))
 
 
@@ -220,6 +224,18 @@ def schedule(args):
                 fleet.atomic_json(args.state / (job_id + ".json"), records[job_id])
             except (OSError, ValueError, subprocess.SubprocessError) as exc:
                 print(f"{fleet.now()} {job_id} status unavailable: {fleet.concise_error(exc)}", flush=True)
+        blocks = {}
+        for job in jobs:
+            record = records.get(job["job_id"])
+            if not record:
+                continue
+            key = (job["source"], job["seed"])
+            assignment = (record.get("host"), record.get("data_path"), record.get("runtime_profile_sha256"))
+            if not all(assignment):
+                raise ValueError(f"missing source/seed block provenance for {job['job_id']}")
+            if key in blocks and blocks[key] != assignment:
+                raise ValueError(f"source/seed block spans mismatched hosts or data paths: {key}")
+            blocks[key] = assignment
         diag_ok = gate_ok(args.diagnostic_gate, "diagnostic", jobs_hash, spec["protocol_sha256"],
                           args.release, args.profile, jobs, records)
         scoring_ok = diag_ok and gate_ok(args.scoring_gate, "scoring", jobs_hash, spec["protocol_sha256"],
@@ -227,7 +243,7 @@ def schedule(args):
         eligible = {name: cfg for name, cfg in hosts.items() if cfg.get("enabled") is True
                     and cfg.get("data_verified") is True and cfg.get("initialization_verified") is True
                     and cfg.get("code_commit") == args.release and cfg.get("runtime_profile_sha256") == args.profile
-                    and int(cfg.get("threads", 4)) == 4
+                    and int(cfg.get("threads", 8)) == 8
                     and cfg.get("protocol_sha256") == spec["split_sha256"]
                     and cfg.get("annotations_sha256") == spec["annotations_sha256"]
                     and Path(cfg.get("result_root", "/")).name == "darc-v2"
@@ -250,6 +266,8 @@ def schedule(args):
                 candidates = [job for job in jobs
                     if ((job["stage"] == "diagnostic" and diag_ok) or
                         (job["stage"] == "core" and scoring_ok))
+                    and (not blocks.get((job["source"], job["seed"])) or
+                         blocks[(job["source"], job["seed"])] == (host, cfg["data_path"], args.profile))
                     and (job["job_id"] not in records or
                          (records[job["job_id"]]["state"] == "infra_failed"
                           and records[job["job_id"]]["attempt"] < 3))]
@@ -266,7 +284,8 @@ def schedule(args):
                 record = {"state": "launching", "host": host, "python": cfg["venv_python"], "out": out,
                           "receipt": out + "/receipt.json", "completion": out + "/completion.json",
                           "device": device[0], "gpu_uuid": device[1], "attempt": attempt,
-                          "nonce": uuid.uuid4().hex, "started": fleet.now()}
+                          "nonce": uuid.uuid4().hex, "started": fleet.now(),
+                          "data_path": cfg["data_path"], "runtime_profile_sha256": args.profile}
                 path = args.state / (job["job_id"] + ".json")
                 fleet.atomic_json(path, record)
                 try:
@@ -276,6 +295,7 @@ def schedule(args):
                 fleet.atomic_json(path, record)
                 records[job["job_id"]] = record
                 used.add((host, device[0]))
+                blocks[(job["source"], job["seed"])] = (host, cfg["data_path"], args.profile)
                 print(f"{fleet.now()} {job['job_id']} {record['state']} {host} GPU {device[0]}", flush=True)
         counts = {}
         for job in jobs:
