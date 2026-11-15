@@ -1,0 +1,41 @@
+{
+  "schema": "darc-processed-strata-1",
+  "protocol_sha256": "14a06aad755ef18a9fb4b90371ea036057af22e57f28e7a892278ac3e721ea16",
+  "scope": "Post-hoc descriptive stratification of the frozen 42-fit processed-image experiment. This plan was frozen before examining the new core prediction files or scores.",
+  "directions": [["MANV", "DARC"], ["DARC", "MANV"]],
+  "seeds": [0, 1, 2],
+  "arms": ["S0I0", "S0I1", "S1I0", "S1I1"],
+  "paired_differences": {
+    "I1_minus_I0_at_S0": ["S0I1", "S0I0"],
+    "I1_minus_I0_at_S1": ["S1I1", "S1I0"],
+    "S1_minus_S0_at_I0": ["S1I0", "S0I0"],
+    "S1_minus_S0_at_I1": ["S1I1", "S0I1"]
+  },
+  "scoring": {
+    "top_predictions_per_image": 30,
+    "iou_minimum": 0.5,
+    "center_distance_maximum_px": 8,
+    "rank": "Sort by descending archived raw score, breaking ties by archive order.",
+    "assignment": "Within the entire image, independently for each criterion, maximize the number of one-to-one matches and then total IoU or inverse center distance. Sort the reference boxes by released annotation ID. Remaining assignment ties follow the recorded SciPy solver implementation and input order. Stratify matched reference IDs after assignment."
+  },
+  "bins": {
+    "native_box_area_px2": {
+      "edges": [128, 512],
+      "names": ["lt128", "128_lt512", "ge512"],
+      "rule": "Use COCO box width times height in the original fixed native raster. Nonpositive area is invalid. The first and last bins are open-ended."
+    },
+    "rendered_contrast_dn": {
+      "edges": [64, 128, 192],
+      "names": ["lt64", "64_lt128", "128_lt192", "ge192"],
+      "rule": "Use released PNG box p90 minus the training-independent local rectangular annulus p90, including zero-valued pixels. Intervals include their lower bound and exclude their upper bound. Negative contrast remains in lt64 and is counted separately. The upper tail is ge192. Missing contrast has a separate bucket and is excluded from the four defined bins. Values outside [-255, 255] are invalid."
+    }
+  },
+  "pixel_audit": {
+    "source_commit": "07525f41cb8b3265e6bfdea11d07f24489b0e58e",
+    "json_sha256": "ca8dfd591728fc093edff998834a2f8b800e306500fae0c4a6dc72c430771354",
+    "csv_sha256": "e67d752b1b800b8aabf8c6a2bf262a67ef165f63ece4f5a8c83c3c8698f23088",
+    "replay": "The archived descriptive audit holds grouped distributions, so recover per-annotation values with its exact pixel helpers on the same SHA-verified PNGs. Require agreement with both archived target-test distribution summaries."
+  },
+  "denominator": "Released native reference objects in each stratum on the unchanged destination holdout. Report reference support, matched count and recall for each seed and arm. Zero support is undefined. Differences are calculated within seed and include all three seed values, their mean and sample standard deviation.",
+  "interpretation": "Conditional matched-object recall. The contrast proxy is a rendered difference in digital numbers and does not establish native radar signal-to-noise ratio, physical clutter, annotation completeness, or detection performance on unlabeled vessels. No new fits, calibration, target parameter selection, or paper edits."
+}
