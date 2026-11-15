@@ -60,6 +60,21 @@ def read_records(states: dict, root: Path) -> dict:
                         rows = sum(1 for _ in csv.DictReader(stream))
                 else:
                     rows = len(json.loads(log.read_text()))
+            parent_completion = None
+            parent_check = None
+            parent = m.get("training_parent")
+            if parent:
+                parent_attempt = PurePosixPath(parent.get("directory", "")).name
+                if parent_attempt.isdigit():
+                    try:
+                        raw = (root / name / parent_attempt / "completion.json").read_bytes()
+                        parent_check = hashlib.sha256(raw).hexdigest() == parent.get(
+                            "completion_sha256"
+                        )
+                        if parent_check:
+                            parent_completion = json.loads(raw)
+                    except (OSError, ValueError):
+                        pass
             keys = (
                 "job_id",
                 "stage",
@@ -100,6 +115,8 @@ def read_records(states: dict, root: Path) -> dict:
                 },
                 "resolved_config": json.loads(cfg.read_text()) if cfg.exists() else None,
                 "history_rows": rows,
+                "parent_completion": parent_completion,
+                "parent_completion_verified": parent_check,
             }
         except (OSError, ValueError, KeyError) as exc:
             records[name] = {"attempt": state["attempt"], "unavailable": str(exc)}
@@ -135,7 +152,9 @@ def code_evidence(method: str, left: str | None, right: str | None) -> dict:
     }
 
 
-def compare_pair(method: str, site: str, seed: int, states: dict, records: dict) -> dict:
+def compare_pair(
+    method: str, site: str, seed: int, states: dict, records: dict, hosts: dict | None = None
+) -> dict:
     names = [f"core-{method}-{site}-s{seed}", f"adjacency-{method}-{site}-s{seed}"]
     row: dict[str, Any] = {
         "method": method,
@@ -197,7 +216,14 @@ def compare_pair(method: str, site: str, seed: int, states: dict, records: dict)
         if method == "yolo" and m.get("evaluation_recipe_version") != "yolo-exact-letterbox-v1":
             row["unverified"].append(f"{name}: corrected evaluation version missing")
         runtime = parent.get("runtime_provenance") or {}
+        training_completion = rec.get("parent_completion") if m.get("training_parent") else c
+        if m.get("training_parent") and not rec.get("parent_completion_verified"):
+            row["unverified"].append(
+                f"{name}: training parent completion unavailable or unverified"
+            )
         row["hardware"][name] = {
+            "python": (training_completion or {}).get("python"),
+            "thread_environment": runtime.get("thread_environment"),
             "gpu": runtime.get("gpu"),
             "torch": runtime.get("torch"),
             "evaluation_device": j.get("device"),
@@ -265,6 +291,84 @@ def compare_pair(method: str, site: str, seed: int, states: dict, records: dict)
         )
         if row["code_evidence"]["status"] != "same_commit":
             row["unverified"].append("training-code equivalence requires review")
+        if jb.get("match_core_gpu_model"):
+            left, right = (row["hardware"][n] for n in names)
+
+            def check(label: str, x: Any, y: Any) -> None:
+                if x is None or y is None or x == "" or y == "":
+                    row["unverified"].append(f"hardware policy evidence missing: {label}")
+                elif x != y:
+                    row["critical"].append(f"hardware policy mismatch: {label}")
+
+            check(
+                "GPU model",
+                (left.get("gpu") or {}).get("model"),
+                (right.get("gpu") or {}).get("model"),
+            )
+            for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "RAYON_NUM_THREADS"):
+                check(
+                    key,
+                    (left.get("thread_environment") or {}).get(key),
+                    (right.get("thread_environment") or {}).get(key),
+                )
+            for key in (
+                "version",
+                "cuda_version",
+                "cudnn_version",
+                "cudnn_deterministic",
+                "cudnn_benchmark",
+                "cudnn_allow_tf32",
+                "matmul_allow_tf32",
+                "deterministic_algorithms",
+            ):
+                check(
+                    "torch." + key,
+                    (left.get("torch") or {}).get(key),
+                    (right.get("torch") or {}).get(key),
+                )
+            # Ignore interpreter build text, but require the full Python version number.
+            check(
+                "Python version",
+                (left.get("python") or "").split(" ")[0],
+                (right.get("python") or "").split(" ")[0],
+            )
+            core_state = states.get(names[0], {})
+            if ma.get("training_parent"):
+                core_state = core_state.get("training_state", {})
+                archived = a.get("parent_completion") or {}
+                saved = core_state.get("result") or {}
+                if not a.get("parent_completion_verified") or any(
+                    saved.get(k) != archived.get(k)
+                    for k in ("job_id", "attempt", "nonce", "code_commit")
+                ):
+                    row["unverified"].append(
+                        "core training host history lacks verified parent identity"
+                    )
+                    core_state = {}
+            core_host, adj_host = core_state.get("host"), states.get(names[1], {}).get("host")
+            proof = {
+                "job_sha256": jb.get("paired_environment_sha256"),
+                "core_host": core_host,
+                "adjacency_host": adj_host,
+            }
+            if core_host and adj_host and core_host != adj_host:
+                h = hosts or {}
+                proof.update(
+                    core_host_sha256=(h.get(core_host) or {}).get("paired_environment_sha256"),
+                    adjacency_host_sha256=(h.get(adj_host) or {}).get("paired_environment_sha256"),
+                )
+                hashes = [
+                    proof["job_sha256"],
+                    proof["core_host_sha256"],
+                    proof["adjacency_host_sha256"],
+                ]
+                if any(not x for x in hashes):
+                    row["unverified"].append("cross-host package attestation missing")
+                elif len(set(hashes)) != 1:
+                    row["critical"].append("cross-host package attestation mismatch")
+            elif not core_host or not adj_host:
+                row["unverified"].append("training host identity missing")
+            row["package_attestation"] = proof
         if row["hardware"][names[0]].get("gpu") != row["hardware"][names[1]].get("gpu"):
             row["differences"].append(
                 "training GPU identity differs; inspect hardware and backend metadata"
@@ -287,6 +391,9 @@ def main() -> None:
     parser.add_argument("--runs-dir", required=True, help="Archive root, local or on --ssh host")
     parser.add_argument("--ssh", help="SSH host for read-only archive access")
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--hosts", type=Path, help="Controller hosts JSON for cross-host package attestation"
+    )
     parser.add_argument("--internal-read", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.internal_read:
@@ -301,6 +408,12 @@ def main() -> None:
             tuple(f"{stage}-{method}-" for stage in ("core", "adjacency") for method in METHODS)
         )
     }
+    for name, state in states.items():
+        if state.get("attempt", 1) > 1:
+            path = args.state / "history" / f"{name}-attempt1.json"
+            if path.is_file():
+                state["training_state"] = json.loads(path.read_text())
+    hosts = json.loads(args.hosts.read_text()).get("hosts", {}) if args.hosts else {}
     if args.ssh:
         # Run this standard-library module remotely; only filtered metadata crosses SSH.
         remote = [
@@ -322,9 +435,9 @@ def main() -> None:
     else:
         records = read_records(states, Path(args.runs_dir))
     report = {
-        "scope": "Metadata only. Target accuracy excluded. Hardware differences are descriptive. Selection criterion is recorded, not independently recomputed.",
+        "scope": "Metadata only. Target accuracy excluded. Flagged hardware policy mismatches are critical; GPU UUID differences are descriptive. Selection criterion is recorded, not independently recomputed.",
         "pairs": [
-            compare_pair(m, s, seed, states, records)
+            compare_pair(m, s, seed, states, records, hosts)
             for m in METHODS
             for s in SITES
             for seed in range(3)
