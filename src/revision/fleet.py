@@ -487,8 +487,8 @@ def approved_gate_methods(gate, jobs, records, jobs_sha256):
     }
 
 
-def adjacency_matches_core(job, records, state_dir, host, cfg, device):
-    """Fail closed unless the paired completed core used this host, GPU model and thread count."""
+def adjacency_matches_core(job, records, state_dir, host, cfg, device, hosts=None):
+    """Match GPU and threads; cross-host use requires matching environment attestations."""
     if not job.get("match_core_gpu_model"):
         return True
     if job.get("stage") != "adjacency" or device is None or len(device) < 3 or not device[2]:
@@ -507,12 +507,22 @@ def adjacency_matches_core(job, records, state_dir, host, cfg, device):
     result = training.get("result", {})
     provenance = result.get("runtime_provenance", {})
     threads = provenance.get("thread_environment", {})
+    training_host = training.get("host")
+    same_environment = training_host == host and training.get("python") == cfg.get("venv_python")
+    if training_host != host:
+        expected = job.get("paired_environment_sha256")
+        training_cfg = (hosts or {}).get(training_host, {})
+        same_environment = (
+            isinstance(expected, str)
+            and bool(expected)
+            and cfg.get("paired_environment_sha256") == expected
+            and training_cfg.get("paired_environment_sha256") == expected
+        )
     return (
         training.get("state") == "succeeded"
         and result.get("job_id") == core_id
         and result.get("state") == "succeeded"
-        and training.get("host") == host
-        and training.get("python") == cfg.get("venv_python")
+        and same_environment
         and provenance.get("gpu", {}).get("model") == device[2]
         and all(threads.get(key) == str(cfg.get("threads", 4))
                 for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "RAYON_NUM_THREADS"))
@@ -676,7 +686,7 @@ def schedule(args):
                         )
                         == (device is not None)
                         and (not j.get("required_host") or j["required_host"] == host)
-                        and adjacency_matches_core(j, records, state_dir, host, cfg, device)
+                        and adjacency_matches_core(j, records, state_dir, host, cfg, device, hosts)
                         and (
                             j.get("stage") == "diagnostic"
                             or (
