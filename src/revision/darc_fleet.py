@@ -204,6 +204,9 @@ def schedule(args):
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     jobs_hash = digest(args.jobs)
     while True:
+        for journal_file in (args.state / "block-restarts").glob("*.json"):
+            if json.loads(journal_file.read_text()).get("status") != "ready":
+                raise ValueError(f"incomplete block restart requires recovery: {journal_file}")
         hosts = json.loads(args.hosts.read_text())["hosts"]
         if not set(hosts) <= ALLOWED:
             raise ValueError("host configuration contains a host outside the DARC allowlist")
@@ -307,6 +310,62 @@ def schedule(args):
         time.sleep(args.poll)
 
 
+def restart_block(args):
+    """Explicitly supersede all terminal attempts in one source/seed block."""
+    spec = json.loads(args.jobs.read_text())
+    if spec.get("schema") != SCHEMA or args.source not in SOURCES or args.seed not in range(3):
+        raise ValueError("invalid DARC block")
+    if not args.reason.strip() or args.target not in ALLOWED:
+        raise ValueError("restart requires an allowed target and a reason")
+    if args.state.name != "state" or args.state.parent.name != "controller" or args.state.parent.parent.name != "darc-v2":
+        raise ValueError("state must be isolated under darc-v2/controller/state")
+    cfg = json.loads(args.hosts.read_text())["hosts"][args.target]
+    if (cfg.get("enabled") is not True or cfg.get("data_verified") is not True
+        or cfg.get("initialization_verified") is not True or cfg.get("code_commit") != args.release
+        or cfg.get("runtime_profile_sha256") != args.profile or int(cfg.get("threads", 8)) != 8
+        or cfg.get("protocol_sha256") != spec["split_sha256"]
+        or cfg.get("annotations_sha256") != spec["annotations_sha256"]
+        or Path(cfg.get("result_root", "/")).name != "darc-v2"
+        or not str(cfg.get("code_path", "")).startswith(str(cfg.get("result_root", "")) + "/releases/")
+        or not cfg.get("venv_python") or not cfg.get("data_path")):
+        raise ValueError("restart target has not passed readiness checks")
+    args.state.mkdir(parents=True, exist_ok=True)
+    lock = (args.state / ".lock").open("w")
+    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    entries = []
+    for job in spec["jobs"]:
+        if job["source"] != args.source or job["seed"] != args.seed:
+            continue
+        path = args.state / (job["job_id"] + ".json")
+        if not path.exists():
+            continue
+        record = json.loads(path.read_text())
+        if record.get("state") not in {"succeeded", "failed", "infra_failed"}:
+            raise ValueError(f"active or uncertain attempt blocks restart: {job['job_id']}")
+        if not isinstance(record.get("attempt"), int) or record["attempt"] >= 3:
+            raise ValueError(f"no remaining attempt slots: {job['job_id']}")
+        entries.append((job, path, record))
+    if not entries:
+        raise ValueError("block has no recorded attempts to restart")
+    restart_id = uuid.uuid4().hex
+    journal_path = args.state / "block-restarts" / (restart_id + ".json")
+    journal = {"restart_id": restart_id, "source": args.source, "seed": args.seed,
+               "target": args.target, "data_path": cfg["data_path"], "profile": args.profile,
+               "release": args.release, "reason": args.reason, "time": fleet.now(),
+               "job_ids": [job["job_id"] for job, _, _ in entries], "status": "preparing"}
+    fleet.atomic_json(journal_path, journal)
+    for job, _, record in entries:
+        history = args.state / "history" / f"{job['job_id']}-attempt{record['attempt']}-restart-{restart_id}.json"
+        fleet.atomic_json(history, record)
+    for job, path, record in entries:
+        fleet.atomic_json(path, {"state": "infra_failed", "attempt": record["attempt"],
+            "host": args.target, "data_path": cfg["data_path"], "runtime_profile_sha256": args.profile,
+            "restart_id": restart_id, "error": "explicit whole-block restart; prior attempt archived"})
+    journal["status"] = "ready"
+    fleet.atomic_json(journal_path, journal)
+    print(f"Restarted block {args.source} seed {args.seed}: {restart_id}")
+
+
 REQUIRED_CHECKS = {
     "diagnostic": {"release_bytes", "data_and_split_hashes", "initialization_hashes", "unit_tests"},
     "scoring": {"diagnostic_artifacts", "shared_initialization", "spatial_and_box_geometry",
@@ -373,6 +432,15 @@ def main():
         g.add_argument("--" + name, type=Path, required=True)
     g.add_argument("--release", required=True)
     g.add_argument("--profile", required=True)
+    r = sub.add_parser("restart-block")
+    for name in ("jobs", "hosts", "state"):
+        r.add_argument("--" + name, type=Path, required=True)
+    r.add_argument("--source", choices=SOURCES, required=True)
+    r.add_argument("--seed", type=int, choices=range(3), required=True)
+    r.add_argument("--target", required=True)
+    r.add_argument("--reason", required=True)
+    r.add_argument("--release", required=True)
+    r.add_argument("--profile", required=True)
     c = sub.add_parser("collect")
     c.add_argument("--state", type=Path, required=True)
     c.add_argument("--dest", type=Path, required=True)
@@ -393,6 +461,8 @@ def main():
         sys.exit(worker(args.job, args.completion, args.attempt))
     elif args.mode == "build-gate":
         build_gate(args)
+    elif args.mode == "restart-block":
+        restart_block(args)
     elif args.mode == "collect":
         for path in sorted(args.state.glob("darc-v2-*.json")):
             record = json.loads(path.read_text())

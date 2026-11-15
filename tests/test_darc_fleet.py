@@ -155,3 +155,39 @@ def test_source_seed_block_is_pinned_to_one_host(tmp_path):
         assignments.setdefault((job["source"], job["seed"]), set()).add(host)
     assert launch.call_count == 4
     assert all(len(assigned) == 1 for assigned in assignments.values())
+
+
+def test_explicit_block_restart_archives_whole_block_and_refuses_active(tmp_path):
+    import pytest
+    base = tmp_path / "darc-v2" / "controller"
+    state = base / "state"
+    state.mkdir(parents=True)
+    spec = d.make_jobs("protocol", catalog())
+    spec.update(split_sha256="split", annotations_sha256="ann")
+    jobs = base / "jobs.json"
+    jobs.write_text(json.dumps(spec))
+    hosts = base / "hosts.json"
+    hosts.write_text(json.dumps({"hosts": {"cocesr-1141": {"enabled": True, "data_verified": True,
+        "initialization_verified": True, "code_commit": "release", "runtime_profile_sha256": "profile",
+        "protocol_sha256": "split", "annotations_sha256": "ann", "data_path": "/new/data", "threads": 8,
+        "result_root": "/new/darc-v2", "code_path": "/new/darc-v2/releases/release", "venv_python": "/p"}}}))
+    block = [j for j in spec["jobs"] if j["source"] == "DAAN" and j["seed"] == 0]
+    for job in block[:2]:
+        (state / (job["job_id"] + ".json")).write_text(json.dumps({"state": "succeeded", "attempt": 1,
+            "host": "comech-2422", "data_path": "/old/data", "runtime_profile_sha256": "profile"}))
+    active = state / (block[1]["job_id"] + ".json")
+    old = json.loads(active.read_text())
+    active.write_text(json.dumps({**old, "state": "running"}))
+    args = SimpleNamespace(jobs=jobs, hosts=hosts, state=state, source="DAAN", seed=0,
+                           target="cocesr-1141", reason="host unavailable", release="release", profile="profile")
+    with pytest.raises(ValueError, match="active"):
+        d.restart_block(args)
+    assert not (state / "history").exists()
+    active.write_text(json.dumps(old))
+    d.restart_block(args)
+    for job in block[:2]:
+        rec = json.loads((state / (job["job_id"] + ".json")).read_text())
+        assert rec["state"] == "infra_failed" and rec["attempt"] == 1
+        assert rec["host"] == "cocesr-1141" and rec["data_path"] == "/new/data"
+    assert len(list((state / "history").glob("*.json"))) == 2
+    assert json.loads(next((state / "block-restarts").glob("*.json")).read_text())["status"] == "ready"
