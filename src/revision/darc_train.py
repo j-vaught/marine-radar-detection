@@ -14,11 +14,11 @@ import platform
 import re
 import time
 from pathlib import Path
-from typing import Any, cast
 
 import cv2
 import numpy as np
 import torch
+import torch.version
 import yaml
 from torch.utils.data import DataLoader
 
@@ -463,7 +463,7 @@ def run(job):
     model.to(device)
     # Probe the exact fixed internal resize once, without changing training RNG.
     previous_rng = _rng_state()
-    transform = cast(Any, model.transform)
+    transform = model.transform
     transform.eval()
     resized, _ = transform.resize(torch.zeros((3, 1024, 1050)), None)
     effective_hw = tuple(int(x) for x in resized.shape[-2:])
