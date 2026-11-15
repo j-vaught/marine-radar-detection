@@ -105,6 +105,7 @@ def prepare(
 ) -> dict:
     """Verify exact source subset/assets and perform a disposable GPU gradient gate."""
     import torch
+    import torch.version
     import ultralytics
     from ultralytics.nn.tasks import RTDETRDetectionModel
 
@@ -287,6 +288,7 @@ def fit(
 ) -> dict:
     """Run a locked arm, recording per-batch losses, gradients, LR and augmentations."""
     import torch
+    import torch.version
     import ultralytics
     from ultralytics import RTDETR
     from ultralytics.models.rtdetr.train import RTDETRTrainer

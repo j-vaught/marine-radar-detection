@@ -105,7 +105,9 @@ def test_asset_is_deterministic_and_budgeted(tmp_path):
     assert a["sha256"] == b["sha256"]
     with tarfile.open(fileobj=io.BytesIO(one.read_bytes()), mode="r:gz") as archive:
         assert archive.getnames() == ["run.json"]
-        assert archive.extractfile("run.json").read() == item.read_bytes()
+        member = archive.extractfile("run.json")
+        assert member is not None
+        assert member.read() == item.read_bytes()
     with pytest.raises(ValueError, match="budget"):
         write_asset(root, [item], tmp_path / "small.tar.gz", 10)
 
