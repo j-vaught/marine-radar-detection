@@ -99,6 +99,14 @@ def main():
                 with open_regular(path) as f:
                     info = tar.gettarinfo(fileobj=f, arcname=rel)
                     tar.addfile(info, f)
+    elif mode == 'localcopy':
+        source, root = pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
+        root.mkdir(parents=True, exist_ok=False)
+        for rel, path in files(source):
+            dest = root.joinpath(*pathlib.PurePosixPath(rel).parts)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with open_regular(path) as src, dest.open('xb') as dst:
+                shutil.copyfileobj(src, dst, BLOCK)
     elif mode == 'extract':
         root = pathlib.Path(sys.argv[2])
         root.mkdir(parents=True, exist_ok=False)
@@ -242,7 +250,10 @@ def archive_one(job: str, attempt: str, record: dict, dest_host: str, root: str)
     staging = f"{root}/.staging/{job}/{attempt}-{uuid.uuid4().hex}"
     existing = remote_input(dest_host, remote_cmd("check", final), manifest) == "yes"
     if not existing:
-        stream_copy(record["host"], record["out"], dest_host, staging)
+        if record["host"].lower() == dest_host.lower():
+            ssh(dest_host, remote_cmd("localcopy", record["out"], staging), timeout=86400)
+        else:
+            stream_copy(record["host"], record["out"], dest_host, staging)
     remote_input(dest_host, remote_cmd("finalize", root, job, attempt, staging), manifest)
     return "verified" if existing else "archived"
 

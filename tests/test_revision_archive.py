@@ -190,3 +190,39 @@ def test_hardlinked_checkpoints_roundtrip(tmp_path):
     assert json.loads(remote("inventory", stage).stdout) == json.loads(manifest)
     assert (stage / "best_training_state.pt").read_bytes() == b"checkpoint contents"
     assert (stage / "last_training_state.pt").read_bytes() == b"checkpoint contents"
+
+
+def test_local_copy_selects_files_and_does_not_link_source(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "data").mkdir()
+    (source / "data" / "staged.png").write_bytes(b"stage")
+    (source / "checkpoint.pt").write_bytes(b"checkpoint")
+    stage = tmp_path / "stage"
+    remote("localcopy", source, stage)
+    assert json.loads(remote("inventory", source).stdout) == json.loads(
+        remote("inventory", stage).stdout
+    )
+    assert not (stage / "data").exists()
+    assert (source / "checkpoint.pt").stat().st_ino != (stage / "checkpoint.pt").stat().st_ino
+    (source / "checkpoint.pt").write_bytes(b"changed")
+    assert (stage / "checkpoint.pt").read_bytes() == b"checkpoint"
+
+
+def test_same_host_selects_local_copy(monkeypatch):
+    calls = []
+
+    def fake_ssh(host, command, **kwargs):
+        calls.append(command)
+        return '{"file":{"size":1,"sha256":"x"}}'
+
+    monkeypatch.setattr(archive, "ssh", fake_ssh)
+    monkeypatch.setattr(archive, "remote_input", lambda *args: "no")
+    monkeypatch.setattr(archive, "stream_copy", lambda *args: pytest.fail("must copy locally"))
+    assert (
+        archive.archive_one(
+            "job", "1", {"host": "comech-2080", "out": "/run"}, "comech-2080", "/archive"
+        )
+        == "archived"
+    )
+    assert len(calls) == 2
