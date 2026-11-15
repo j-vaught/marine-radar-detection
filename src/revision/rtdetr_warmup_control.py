@@ -10,6 +10,7 @@ import os
 import shutil
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import yaml
@@ -218,7 +219,68 @@ def _finite_gradients(model) -> bool:
     return not parts or bool(torch.stack(parts).all().item())
 
 
-def fit(gate_path: Path, output: Path, seed: int, bias: float, gpu_uuid: str) -> dict:
+def observe_optimizer_step(trainer, control_state: dict, execute_original) -> None:
+    """Record native scaler skip/backoff without changing its update sequence."""
+    import torch
+
+    # Observe the framework's unmodified scaler/optimizer sequence. AMP
+    # overflows are expected to skip the step and back off the scale.
+    if trainer.loss is None or not bool(torch.isfinite(trainer.loss).all().item()):
+        raise FloatingPointError("nonfinite training loss before optimizer step")
+    row = trainer.control_batch
+    row["optimizer_step"] = True
+    row["scaled_gradient_finite"] = _finite_gradients(trainer.model)
+    row["scale_before"] = float(trainer.scaler.get_scale())
+    observed: dict[str, Any] = {"executed": False}
+    original_step, original_unscale = trainer.optimizer.step, trainer.scaler.unscale_
+
+    def observe_step(*step_args, **step_kwargs):
+        observed["executed"] = True
+        return original_step(*step_args, **step_kwargs)
+
+    def observe_unscale(optimizer):
+        value = original_unscale(optimizer)
+        observed["unscaled_gradient_finite"] = _finite_gradients(trainer.model)
+        observed["found_inf"] = (
+            {
+                str(device): float(value.item())
+                for device, value in trainer.scaler._found_inf_per_device(optimizer).items()
+            }
+            if trainer.scaler.is_enabled()
+            else {}
+        )
+        if not trainer.scaler.is_enabled() and not observed["unscaled_gradient_finite"]:
+            raise FloatingPointError("nonfinite unscaled gradient with AMP disabled")
+        return value
+
+    trainer.optimizer.step = observe_step
+    trainer.scaler.unscale_ = observe_unscale
+    try:
+        execute_original()
+    finally:
+        trainer.optimizer.step = original_step
+        trainer.scaler.unscale_ = original_unscale
+    control_state["optimizer_attempts"] += 1
+    control_state["optimizer_steps"] += int(observed["executed"])
+    control_state["skipped_steps"] += int(not observed["executed"])
+    row.update(
+        {
+            "unscaled_gradient_finite": observed["unscaled_gradient_finite"],
+            "found_inf": observed["found_inf"],
+            "optimizer_step_executed": observed["executed"],
+            "scale_after": float(trainer.scaler.get_scale()),
+        }
+    )
+
+
+def fit(
+    gate_path: Path,
+    output: Path,
+    seed: int,
+    bias: float,
+    gpu_uuid: str,
+    probe_first_step: bool = False,
+) -> dict:
     """Run a locked arm, recording per-batch losses, gradients, LR and augmentations."""
     import torch
     import ultralytics
@@ -256,7 +318,13 @@ def fit(gate_path: Path, output: Path, seed: int, bias: float, gpu_uuid: str) ->
     original_digest = tensor_digest(reference["model"])
     if original_digest != gate["initial_tensor_sha256"]:
         raise ValueError("initial model tensor digest mismatch")
-    control_state = {"batches": 0, "optimizer_steps": 0, "complete_epoch": 0}
+    control_state = {
+        "batches": 0,
+        "optimizer_attempts": 0,
+        "optimizer_steps": 0,
+        "skipped_steps": 0,
+        "complete_epoch": 0,
+    }
     trace_path = output / "batches.jsonl"
 
     class ControlTrainer(RTDETRTrainer):
@@ -283,11 +351,7 @@ def fit(gate_path: Path, output: Path, seed: int, bias: float, gpu_uuid: str) ->
             return super().preprocess_batch(batch)
 
         def optimizer_step(self):
-            if not _finite_gradients(self.model):
-                raise FloatingPointError("nonfinite gradient before optimizer step")
-            control_state["optimizer_steps"] += 1
-            self.control_batch["optimizer_step"] = True
-            return super().optimizer_step()
+            return observe_optimizer_step(self, control_state, super().optimizer_step)
 
     def start(trainer):
         if trainer.batch_size != 4 or trainer.args.epochs != 100 or trainer.args.patience != 0:
@@ -327,18 +391,25 @@ def fit(gate_path: Path, output: Path, seed: int, bias: float, gpu_uuid: str) ->
         }
         protocol.save_json(output / "initial_provenance.json", state)
 
+    class ProbeComplete(Exception):
+        pass
+
     def batch_end(trainer):
-        if not bool(torch.isfinite(trainer.loss).all().item()) or not _finite_gradients(
-            trainer.model
-        ):
-            raise FloatingPointError("nonfinite training loss or gradient")
+        if not bool(torch.isfinite(trainer.loss).all().item()):
+            raise FloatingPointError("nonfinite training loss")
         row = trainer.control_batch
         row["loss"] = float(trainer.loss.detach().cpu())
         row["loss_items"] = [float(x) for x in trainer.loss_items.detach().cpu().reshape(-1)]
+        row["gradient_finite_after_batch"] = _finite_gradients(trainer.model)
+        if not trainer.scaler.is_enabled() and not row["gradient_finite_after_batch"]:
+            raise FloatingPointError("nonfinite gradient with AMP disabled")
         row["optimizer_step_index"] = control_state["optimizer_steps"]
+        row["optimizer_attempt_index"] = control_state["optimizer_attempts"]
         with trace_path.open("a") as stream:
             stream.write(json.dumps(row, allow_nan=False) + "\n")
         control_state["batches"] += 1
+        if probe_first_step and control_state["optimizer_attempts"] >= 1:
+            raise ProbeComplete("first optimizer attempt recorded")
 
     def saved(trainer):
         if int(trainer.epoch) == 41:
@@ -368,11 +439,22 @@ def fit(gate_path: Path, output: Path, seed: int, bias: float, gpu_uuid: str) ->
             "gpu_uuid": gpu_uuid,
             "executed_epochs": control_state["complete_epoch"],
             "batches": control_state["batches"],
+            "optimizer_attempts": control_state["optimizer_attempts"],
             "optimizer_steps": control_state["optimizer_steps"],
+            "skipped_steps": control_state["skipped_steps"],
             "elapsed_seconds": time.perf_counter() - t0,
             "trace_sha256": protocol.sha256_file(trace_path),
             "results_sha256": protocol.sha256_file(output / "fit/results.csv"),
             "epoch42_checkpoint_sha256": protocol.sha256_file(output / "epoch42_resumable.pt"),
+        }
+    except ProbeComplete:
+        result = {
+            "status": "probe-complete",
+            "seed": seed,
+            "warmup_bias_lr": bias,
+            "gpu_uuid": gpu_uuid,
+            "progress": control_state,
+            "trace_sha256": protocol.sha256_file(trace_path),
         }
     except BaseException as exc:
         protocol.save_json(
@@ -456,6 +538,7 @@ def main():
     arm.add_argument("--seed", type=int, choices=(0, 1), required=True)
     arm.add_argument("--bias", type=float, choices=(0.0, 0.1), required=True)
     arm.add_argument("--gpu-uuid", required=True)
+    arm.add_argument("--probe-first-step", action="store_true")
     paired = sub.add_parser("compare")
     paired.add_argument("--left", type=Path, required=True)
     paired.add_argument("--right", type=Path, required=True)
@@ -472,7 +555,9 @@ def main():
             args.gpu_uuid,
         )
     elif args.action == "fit":
-        result = fit(args.gate, args.output, args.seed, args.bias, args.gpu_uuid)
+        result = fit(
+            args.gate, args.output, args.seed, args.bias, args.gpu_uuid, args.probe_first_step
+        )
     else:
         result = compare(args.left, args.right, args.output)
     print(json.dumps(result, default=str))
