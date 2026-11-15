@@ -184,3 +184,18 @@ def test_flagged_thread_and_amp_mismatch_are_critical():
     assert result["status"] == "critical"
     assert "hardware policy mismatch: OMP_NUM_THREADS" in result["critical"]
     assert "effective training/config mismatch" in result["critical"]
+
+
+def test_repaired_cpu_evaluation_vs_gpu_is_descriptive():
+    states, records = pair()
+    left = records["core-faster_rcnn-DAAN-s0"]
+    left["metadata"]["evaluation_device"] = "cpu"
+    left["completion"]["runtime_provenance"]["torch"] = {"matmul_allow_tf32": False}
+    right = records["adjacency-faster_rcnn-DAAN-s0"]
+    right["completion"]["runtime_provenance"]["torch"] = {"matmul_allow_tf32": True}
+    result = compare_pair("faster_rcnn", "DAAN", 0, states, records)
+    assert result["status"] == "matched"
+    assert "evaluation device/backend differs: cpu versus cuda" in result["differences"]
+    assert "evaluation backend setting differs: torch.matmul_allow_tf32" in result["differences"]
+    assert result["hardware"]["core-faster_rcnn-DAAN-s0"]["evaluation_device"] == "cpu"
+    assert not result["critical"]

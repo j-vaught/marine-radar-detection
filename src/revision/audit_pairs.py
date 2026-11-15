@@ -97,6 +97,7 @@ def read_records(states: dict, root: Path) -> dict:
                 "resolved_train_args",
                 "training_parent",
                 "evaluation_recipe_version",
+                "evaluation_device",
             )
             records[name] = {
                 "attempt": state["attempt"],
@@ -224,7 +225,8 @@ def compare_pair(
             "thread_environment": runtime.get("thread_environment"),
             "gpu": runtime.get("gpu"),
             "torch": runtime.get("torch"),
-            "evaluation_device": j.get("device"),
+            "evaluation_device": m.get("evaluation_device") or j.get("device"),
+            "evaluation_runtime_provenance": c.get("runtime_provenance"),
         }
     if all(records.get(n) and "unavailable" not in records[n] for n in names):
         a, b = (records[n] for n in names)
@@ -367,6 +369,42 @@ def compare_pair(
             elif not core_host or not adj_host:
                 row["unverified"].append("training host identity missing")
             row["package_attestation"] = proof
+        eval_a, eval_b = (row["hardware"][name] for name in names)
+
+        def backend(value: Any) -> str | None:
+            if not isinstance(value, str) or not value:
+                return None
+            return "cuda" if value.startswith("cuda") or value.isdigit() else value.split(":")[0]
+
+        device_a, device_b = (
+            backend(eval_a["evaluation_device"]),
+            backend(eval_b["evaluation_device"]),
+        )
+        if device_a is None or device_b is None:
+            row["unverified"].append("evaluation device/backend evidence missing")
+        elif device_a != device_b:
+            row["differences"].append(
+                f"evaluation device/backend differs: {device_a} versus {device_b}"
+            )
+        eval_runtime_a = eval_a.get("evaluation_runtime_provenance") or {}
+        eval_runtime_b = eval_b.get("evaluation_runtime_provenance") or {}
+        for key in (
+            "version",
+            "cuda_version",
+            "cudnn_deterministic",
+            "cudnn_benchmark",
+            "cudnn_allow_tf32",
+            "matmul_allow_tf32",
+        ):
+            value_a = (eval_runtime_a.get("torch") or {}).get(key)
+            value_b = (eval_runtime_b.get("torch") or {}).get(key)
+            if value_a is not None and value_b is not None and value_a != value_b:
+                row["differences"].append(f"evaluation backend setting differs: torch.{key}")
+        if device_a == device_b == "cuda":
+            gpu_a = (eval_runtime_a.get("gpu") or {}).get("model")
+            gpu_b = (eval_runtime_b.get("gpu") or {}).get("model")
+            if gpu_a and gpu_b and gpu_a != gpu_b:
+                row["differences"].append("evaluation GPU model differs")
         if row["hardware"][names[0]].get("gpu") != row["hardware"][names[1]].get("gpu"):
             row["differences"].append(
                 "training GPU identity differs; inspect hardware and backend metadata"
