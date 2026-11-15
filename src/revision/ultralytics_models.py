@@ -198,6 +198,10 @@ def run_job(job: dict) -> dict:
         cos_lr=t.get("lr_scheduler", "").lower() in ("cosineannealinglr", "cosine"),
         **aug,
     )
+    # The Ultralytics default (0.1) is 1000x this RT-DETR learning rate and
+    # destabilizes transformer classification during warmup. Start all groups at zero.
+    if method == 'rtdetr':
+        args['warmup_bias_lr'] = float(t.get('warmup_bias_lr', 0.0))
     amp_probe_hash = None
     if is_cuda and args['amp']:
         # Ultralytics 8.4.14 checks AMP using this auxiliary model in the cwd.
