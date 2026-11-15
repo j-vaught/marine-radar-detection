@@ -94,12 +94,20 @@ def _preflight(jobs: list[dict], runs_dir: Path) -> tuple[dict, dict[str, Collec
         if planned["stage"] != "diagnostic":
             primary.append(summary._signature(planned))
         attempts = summary._attempts(runs_dir, job_id)
-        successes = [a for a in attempts if a["state"] == "succeeded"]
         item = {"job_id": job_id, "stage": planned["stage"]}
-        if len(successes) == 1:
-            completion = successes[0]
-            folder = runs_dir / job_id / str(completion["attempt"])
-            try:
+        try:
+            completion = summary._completed_attempt(runs_dir, planned, attempts)
+            if completion is None:
+                if attempts:
+                    state = attempts[-1]["state"]
+                    item.update(
+                        state="waiting_for_evaluation_repair" if state == "succeeded" else state,
+                        attempts=attempts,
+                    )
+                else:
+                    item["state"] = "uncollected"
+            else:
+                folder = runs_dir / job_id / str(completion["attempt"])
                 metrics_file = folder / "metrics.json"
                 if protocol.sha256_file(metrics_file) != completion["metrics_sha256"]:
                     raise ValueError("Collected metrics do not match the worker receipt SHA-256")
@@ -113,16 +121,14 @@ def _preflight(jobs: list[dict], runs_dir: Path) -> tuple[dict, dict[str, Collec
                     or actual.get("code_commit") != completion.get("code_commit")
                 ):
                     raise ValueError("Worker receipt differs from the collected job metadata")
+                ledger_root = runs_dir / ".ledger"
+                ledger = ledger_root / job_id / f"{completion['attempt']}.json"
+                if ledger_root.is_dir() and not ledger.is_file():
+                    raise FileNotFoundError("Completed attempt is waiting for its archive ledger")
                 ready[job_id] = CollectedRun(actual, completion, folder)
                 item["state"] = "ready"
-            except (OSError, ValueError, KeyError, TypeError) as exc:
-                item.update(state="invalid_or_uncollected", error=str(exc))
-        elif len(successes) > 1:
-            item.update(state="invalid", error="Multiple successful attempts")
-        elif attempts:
-            item.update(state=attempts[-1]["state"], attempts=attempts)
-        else:
-            item["state"] = "uncollected"
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            item.update(state="invalid_or_uncollected", error=str(exc))
         status.append(item)
 
     signature_counts = Counter(primary)
@@ -206,6 +212,16 @@ def _curve_record(run: CollectedRun) -> tuple[dict, Path | None]:
                 rows = sum(1 for _ in csv.DictReader(stream))
         else:
             rows = len(summary._load(local))
+    parent = metrics.get("training_parent")
+    training = parent if parent is not None else run.completion
+    training_runtime = training.get("runtime_provenance") or {}
+    training_gpu = (training_runtime.get("gpu") or {}).get("uuid")
+    if training_gpu is None:
+        visible_gpu = training_runtime.get("cuda_visible_devices")
+        if isinstance(visible_gpu, str) and visible_gpu.startswith("GPU-"):
+            training_gpu = visible_gpu
+        elif parent is None:
+            training_gpu = run.completion.get("observed_gpu_uuid")
     record = {
         **{key: job[key] for key in summary.IDENTITY},
         "requested_epochs": job.get("epochs"),
@@ -224,14 +240,24 @@ def _curve_record(run: CollectedRun) -> tuple[dict, Path | None]:
         "epoch_rows": rows,
         "checkpoint_sha256": _checkpoint_digest(run),
         "checkpoint_verified_by_worker": bool(metrics.get("tests")),
-        "code_commit": run.completion.get("code_commit"),
-        "gpu_uuid": run.completion.get("observed_gpu_uuid"),
+        "code_commit": training.get("code_commit"),
+        "gpu_uuid": training_gpu,
+        "training_runtime_provenance": training.get("runtime_provenance"),
+        "evaluation_attempt": run.completion["attempt"],
+        "evaluation_code_commit": run.completion.get("code_commit"),
+        "evaluation_device": metrics.get("evaluation_device", job.get("device")),
+        "evaluation_runtime_provenance": run.completion.get("runtime_provenance"),
+        "evaluation_recipe_version": metrics.get("evaluation_recipe_version"),
     }
     return record, local if present else None
 
 
 def _inventory(
-    runs: dict[str, CollectedRun], manifest_path: Path, annotation_path: Path
+    runs: dict[str, CollectedRun],
+    manifest_path: Path,
+    annotation_path: Path,
+    *,
+    include_adjacency_predictions: bool = False,
 ) -> tuple[dict, dict, dict, list[dict]]:
     manifest_sha = protocol.sha256_file(manifest_path)
     annotation_sha = protocol.sha256_file(annotation_path)
@@ -271,9 +297,11 @@ def _inventory(
                 curve["curve_sha256"] = digest
                 file_hashes[f"runs/{job_id}/epoch_curve"] = digest
             curves.append(curve)
-        if run.job["stage"] == "diagnostic":
-            continue
-        for target in summary.SITES:
+        used_artifacts = {
+            name: file_hashes[f"runs/{job_id}/{name}"]
+            for name in ("job.json", "completion.json", "metrics.json")
+        }
+        for target in run.job["eval_targets"]:
             reference_sha, prediction = _test_artifacts(run, target)
             if reference_sha != ref_hashes[target]:
                 raise ValueError(
@@ -285,7 +313,7 @@ def _inventory(
                     raise ValueError(
                         f"{job_id}/{target}: checkpoint metadata differs from selected model"
                     )
-            if run.job["stage"] == "core":
+            if run.job["stage"] == "core" or include_adjacency_predictions:
                 if not prediction:
                     raise ValueError(f"{job_id}/{target}: missing raw prediction path")
                 path = _artifact_path(run, prediction)
@@ -294,6 +322,14 @@ def _inventory(
                 digest = protocol.sha256_file(path)
                 file_hashes[f"runs/{job_id}/{target}/raw_predictions"] = digest
                 prediction_paths[job_id, target] = (path, digest)
+                used_artifacts[path.relative_to(run.folder).as_posix()] = digest
+        ledger_root = run.folder.parents[1] / ".ledger"
+        if ledger_root.is_dir():
+            ledger = ledger_root / job_id / f"{run.completion['attempt']}.json"
+            archived = summary._load(ledger)["files"]
+            if any(archived[name]["sha256"] != digest for name, digest in used_artifacts.items()):
+                raise ValueError(f"{job_id}: artifact content differs from verified archive ledger")
+            file_hashes[f"runs/{job_id}/archive_ledger"] = protocol.sha256_file(ledger)
     file_hashes["split_manifest"] = manifest_sha
     file_hashes["released_annotations"] = annotation_sha
     return manifest, file_hashes, prediction_paths, curves
@@ -473,27 +509,32 @@ def _geometry_estimates(rows: list[dict]) -> list[dict]:
 
 
 def _run_strict_summary(
-    directory: Path, jobs: Path, completed: Path, split_manifest: Path, annotations: Path
+    directory: Path,
+    jobs: Path,
+    completed: Path,
+    split_manifest: Path,
+    annotations: Path,
+    blocks: Path | None = None,
 ) -> None:
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "src.revision.summarize",
-            "--jobs",
-            str(jobs),
-            "--runs-dir",
-            str(completed),
-            "--output-dir",
-            str(directory),
-            "--split-manifest",
-            str(split_manifest),
-            "--annotations",
-            str(annotations),
-            "--require-complete",
-        ],
-        check=True,
-    )
+    command = [
+        sys.executable,
+        "-m",
+        "src.revision.summarize",
+        "--jobs",
+        str(jobs),
+        "--runs-dir",
+        str(completed),
+        "--output-dir",
+        str(directory),
+        "--split-manifest",
+        str(split_manifest),
+        "--annotations",
+        str(annotations),
+        "--require-complete",
+    ]
+    if blocks is not None:
+        command.extend(["--blocks", str(blocks)])
+    subprocess.run(command, check=True)
 
 
 def _analysis_identity(jobs_sha: str, inventory: dict) -> dict:
@@ -526,7 +567,13 @@ def _cached_report(output: Path, identity: str) -> bool:
 
 
 def _validate_immutable_inputs(
-    runs: dict[str, CollectedRun], jobs: Path, manifest: Path, annotations: Path, identity: dict
+    runs: dict[str, CollectedRun],
+    jobs: Path,
+    manifest: Path,
+    annotations: Path,
+    identity: dict,
+    blocks: Path | None,
+    prediction_paths: dict,
 ) -> None:
     sources = identity["inputs"]
     checks = [
@@ -534,9 +581,18 @@ def _validate_immutable_inputs(
         (manifest, sources["split_manifest"]),
         (annotations, sources["released_annotations"]),
     ]
+    if blocks is not None:
+        checks.append((blocks, sources["index_blocks"]))
+    checks.extend(prediction_paths.values())
     for job_id, run in runs.items():
         for name in ("job.json", "completion.json", "metrics.json"):
             checks.append((run.folder / name, sources[f"runs/{job_id}/{name}"]))
+        ledger_key = f"runs/{job_id}/archive_ledger"
+        if ledger_key in sources:
+            ledger = (
+                run.folder.parents[1] / ".ledger" / job_id / f"{run.completion['attempt']}.json"
+            )
+            checks.append((ledger, sources[ledger_key]))
     for path, expected in checks:
         if protocol.sha256_file(path) != expected:
             raise ValueError(f"Finalization input changed during analysis: {path}")
@@ -555,10 +611,11 @@ def _write_final(
     identity: dict,
     digest: str,
     cache_dir: Path | None,
+    blocks: Path | None,
 ) -> None:
     with TemporaryDirectory(dir=output) as work:
         staging = Path(work)
-        _run_strict_summary(staging, jobs, runs_dir, split, annotations)
+        _run_strict_summary(staging, jobs, runs_dir, split, annotations, blocks)
         pairs, seed_rows = _geometry_analysis(runs, manifest, annotations, paths, cache_dir)
         estimates = _geometry_estimates(seed_rows)
         protocol.save_json(
@@ -594,7 +651,7 @@ def _write_final(
                 "learned_job_records": curves,
             },
         )
-        _validate_immutable_inputs(runs, jobs, split, annotations, identity)
+        _validate_immutable_inputs(runs, jobs, split, annotations, identity, blocks, paths)
         output_hashes = {name: protocol.sha256_file(staging / name) for name in OUTPUT_FILES}
         for name in OUTPUT_FILES:
             os.replace(staging / name, output / name)
@@ -612,6 +669,7 @@ def finalize(
     annotations: Path,
     output_dir: Path,
     cache_dir: Path | None = None,
+    blocks: Path | None = None,
 ) -> bool:
     """Return false for an incomplete archive, with progress and no completion marker."""
     output = output_dir.resolve()
@@ -633,7 +691,11 @@ def finalize(
                 return False
             progress["state"] = "checking_collected_inputs"
             _atomic_json(progress_path, progress)
-            manifest, inventory, paths, curves = _inventory(runs, split_manifest, annotations)
+            manifest, inventory, paths, curves = _inventory(
+                runs, split_manifest, annotations, include_adjacency_predictions=blocks is not None
+            )
+            if blocks is not None:
+                inventory["index_blocks"] = protocol.sha256_file(blocks)
             identity = _analysis_identity(summary._digest(jobs_bytes), inventory)
             digest = summary._digest_json(identity)
             progress["input_content_sha256"] = digest
@@ -654,6 +716,7 @@ def finalize(
                     identity,
                     digest,
                     cache_dir,
+                    blocks,
                 )
             progress["state"] = "complete"
             _atomic_json(progress_path, progress)
@@ -674,6 +737,9 @@ def main() -> None:
     parser.add_argument("--annotations", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--cache-dir", type=Path, help="Reuse precomputed reference scores")
+    parser.add_argument(
+        "--blocks", type=Path, help="Fixed target frame-index blocks for paired deletion"
+    )
     args = parser.parse_args()
     if not finalize(**vars(args)):
         print(f"Archive incomplete. Progress is in {args.output_dir / 'progress.json'}.")

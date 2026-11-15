@@ -94,17 +94,15 @@ def _ap(source, target, seed, stage):
 
 def _write_attempt(frozen, job, *, failed=False):
     out = frozen["runs"] / job["job_id"] / "1"
-    _json(
-        out / "completion.json",
-        {
-            "job_id": job["job_id"],
-            "attempt": 1,
-            "state": "failed" if failed else "succeeded",
-            "exit_code": int(failed),
-        },
-    )
+    completion = {
+        "job_id": job["job_id"],
+        "attempt": 1,
+        "state": "failed" if failed else "succeeded",
+        "exit_code": int(failed),
+    }
     _json(out / "job.json", job)
     if failed:
+        _json(out / "completion.json", completion)
         return out
     metrics = {
         **job,
@@ -125,7 +123,10 @@ def _write_attempt(frozen, job, *, failed=False):
         # Exercise both supported learned payload shapes.
         key = "raw" if job["method"] in {"unet", "faster_rcnn"} else "raw_metrics"
         metrics["tests"] = {site: {key: record} for site, record in metrics["tests"].items()}
-    _json(out / "metrics.json", metrics)
+    if job["method"] == "yolo":
+        metrics["evaluation_recipe_version"] = "yolo-exact-letterbox-v1"
+    completion["metrics_sha256"] = _json(out / "metrics.json", metrics)
+    _json(out / "completion.json", completion)
     return out
 
 
@@ -239,14 +240,17 @@ def test_block_deletion_replays_paired_gap(frozen):
     pytest.importorskip("pycocotools")
     from src.revision.summarize import _subset_coco
 
-    jobs = [_job(frozen, "core", "faster_rcnn", site, 0) for site in ("DAAN", "DARC")]
+    jobs = [
+        _job(frozen, "core", method, site, 0)
+        for method, site in itertools.product(("faster_rcnn", "otsu"), ("DAAN", "DARC"))
+    ]
     for job in jobs:
         out = _write_attempt(frozen, job)
         payload = json.loads((out / "metrics.json").read_text())
         for site in SITES:
             ids = frozen["manifest_data"]["sites"][site]["partitions"]["test"]
             gt = _subset_coco(frozen["coco"], set(ids))
-            predicted_ids = ids if job["source"] == site else ids[:1]
+            predicted_ids = ids if job["source"] == site or job["method"] == "otsu" else ids[:1]
             predictions = [
                 {"image_id": id_, "bbox": [4, 5, 10, 10], "score": 0.8, "category_id": 1}
                 for id_ in predicted_ids
@@ -257,7 +261,10 @@ def test_block_deletion_replays_paired_gap(frozen):
 
     report, _ = summarize(jobs, frozen["runs"], blocks={"DARC": [[103], [104, 105]]})
     gap = report["block_deletion"]["DARC"]["target_local_minus_incoming"][0]
-    assert gap["source"] == "DAAN"
+    assert gap["source"] == "DAAN" and gap["method"] == "faster_rcnn"
+    classical = report["block_deletion"]["DARC"]["target_local_minus_incoming"][1]
+    assert classical["method"] == "otsu"
+    assert classical["ap_ranges"]["ap"]["by_deleted_block"] == [0.0, 0.0]
     scores = gap["ap_ranges"]["ap"]
     assert scores["full_holdout"] == pytest.approx(1 - 34 / 101)
     assert scores["by_deleted_block"] == pytest.approx([1.0, 0.0])

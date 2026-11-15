@@ -240,6 +240,100 @@ def _attempts(root: Path, job_id: str) -> list[dict]:
     return attempts
 
 
+def _load_attempt_metrics(folder: Path, completion: dict) -> tuple[dict, str]:
+    payload = (folder / "metrics.json").read_bytes()
+    digest = _digest(payload)
+    if completion["metrics_sha256"] != digest:
+        raise ValueError("Attempt metrics do not match the completed receipt")
+    return json.loads(payload), digest
+
+
+def _completed_attempt(root: Path, planned: dict, attempts: list[dict]) -> dict | None:
+    """Select a unique success or its verified, same-checkpoint YOLO evaluation repair."""
+    successes = [attempt for attempt in attempts if attempt["state"] == "succeeded"]
+    if not successes:
+        return None
+    job_id = planned["job_id"]
+    candidate = successes[-1]
+    folder = root / job_id / str(candidate["attempt"])
+    actual = _load(folder / "job.json")
+    requested_parent = planned.get("evaluation_from")
+    repair_parent = actual.get("evaluation_from")
+    if requested_parent and not repair_parent and len(successes) == 1:
+        return None
+    if repair_parent is None and len(successes) == 1:
+        if planned["method"] == "yolo" and planned["stage"] in {"core", "adjacency"}:
+            metrics, _ = _load_attempt_metrics(folder, candidate)
+            if metrics.get("evaluation_recipe_version") != "yolo-exact-letterbox-v1":
+                return None
+        return candidate
+    if (
+        len(successes) != 2
+        or planned["method"] != "yolo"
+        or not repair_parent
+        or (requested_parent is not None and requested_parent != repair_parent)
+    ):
+        raise ValueError("Multiple successful attempts without a declared YOLO evaluation repair")
+
+    original = successes[0]
+    parent = root / job_id / str(original["attempt"])
+    parent_job = _load(parent / "job.json")
+    receipt_bytes = (parent / "receipt.json").read_bytes()
+    receipt = json.loads(receipt_bytes)
+    repair_receipt = _load(folder / "receipt.json")
+    receipt_fields = ("job_id", "attempt", "nonce", "pid", "start_ticks", "boot_id")
+    _job_identity(actual, planned)
+    _job_identity(parent_job, planned)
+    if (
+        parent_job.get("evaluation_from")
+        or parent_job["out_dir"] != repair_parent
+        or parent_job["attempt_nonce"] != original["nonce"]
+        or actual["attempt_nonce"] != candidate["nonce"]
+        or any(receipt[key] != original[key] for key in receipt_fields)
+        or any(repair_receipt[key] != candidate[key] for key in receipt_fields)
+        or any(
+            actual.get(key) != parent_job.get(key)
+            for key in (
+                "initialization",
+                "epochs",
+                "patience",
+                "overfit",
+                "train_limit",
+                "eval_targets",
+                "config_overrides",
+            )
+        )
+        or actual["device"] != "cpu"
+        or actual["protocol_sha256"] != candidate["manifest_sha256"]
+        or parent_job["protocol_sha256"] != original["manifest_sha256"]
+        or candidate["manifest_sha256"] != original["manifest_sha256"]
+    ):
+        raise ValueError("Evaluation repair receipt or parent identity mismatch")
+
+    parent_metrics, metrics_sha = _load_attempt_metrics(parent, original)
+    latest, _ = _load_attempt_metrics(folder, candidate)
+    recorded = latest["training_parent"]
+    checkpoint = _sha(parent_metrics["best_sha256"], "training parent checkpoint")
+    if (
+        recorded["directory"] != repair_parent
+        or recorded["metrics_sha256"] != metrics_sha
+        or recorded["receipt_sha256"] != _digest(receipt_bytes)
+        or recorded["completion_sha256"] != _digest((parent / "completion.json").read_bytes())
+        or recorded["checkpoint_sha256"] != checkpoint
+        or latest["best_sha256"] != checkpoint
+        or recorded["code_commit"] != original["code_commit"]
+        or recorded.get("runtime_provenance") != original.get("runtime_provenance")
+        or latest["evaluation_recipe_version"] != "yolo-exact-letterbox-v1"
+        or latest["evaluation_device"] != "cpu"
+        or any(
+            latest.get(field) != parent_metrics.get(field)
+            for field in ("best_epoch", "training_seconds", "peak_vram_bytes")
+        )
+    ):
+        raise ValueError("Evaluation repair provenance differs from the archived training parent")
+    return candidate
+
+
 def _collect(
     jobs: list[dict], root: Path, split_manifest: Path | None, annotations: Path | None
 ) -> tuple[dict[Signature, Run], list[dict], set[Signature]]:
@@ -273,15 +367,16 @@ def _collect(
         elif stage != "diagnostic":
             raise ValueError(f"unsupported stage for {job_id}: {stage!r}")
         attempts = _attempts(root, job_id)
-        successes = [a for a in attempts if a["state"] == "succeeded"]
         report = {key: job[key] for key in IDENTITY}
         report["attempts"] = attempts
         report["state"] = attempts[-1]["state"] if attempts else "missing"
-        if len(successes) > 1:
-            report.update(state="invalid", error="multiple successful attempts for one job")
-        elif successes:
-            folder = root / job_id / str(successes[0]["attempt"])
-            try:
+        try:
+            selected = _completed_attempt(root, job, attempts)
+            if selected is None:
+                if report["state"] == "succeeded":
+                    report["state"] = "waiting_for_evaluation_repair"
+            else:
+                folder = root / job_id / str(selected["attempt"])
                 if stage == "diagnostic":
                     result = _load(folder / "metrics.json")
                     if result["job_id"] != job_id or result.get("tests"):
@@ -289,8 +384,8 @@ def _collect(
                 else:
                     runs[signature] = _load_run(job, folder, split_manifest, annotations, verified)
                 report.update(state="complete", metrics_path=str(folder / "metrics.json"))
-            except (KeyError, OSError, TypeError, ValueError) as exc:
-                report.update(state="invalid", error=str(exc))
+        except (KeyError, OSError, TypeError, ValueError) as exc:
+            report.update(state="invalid", error=str(exc))
         reports.append(report)
     return runs, reports, plan - declared
 
@@ -441,9 +536,14 @@ def _matrix(runs: dict[Signature, Run], stage: str, method: str, seed: int, metr
 
 def _prediction_path(run: Run, target: str) -> Path:
     payload = run.metrics["tests"][target]
-    stored = payload.get("raw_path") or run.metrics.get("paths", {}).get("subsets", {}).get(
-        f"test_{target}", {}
-    ).get("predictions")
+    stored = (
+        payload.get("raw_path")
+        or payload.get("raw_predictions_path")
+        or run.metrics.get("paths", {})
+        .get("subsets", {})
+        .get(f"test_{target}", {})
+        .get("predictions")
+    )
     if stored:
         # Worker originals may be on a different host. Collectors retain run filenames.
         return run.attempt / Path(stored).name
