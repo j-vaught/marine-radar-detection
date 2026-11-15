@@ -60,3 +60,7 @@ The response mean and population standard deviation at each level use pixels
 inside the circle whose original input value is nonzero. Both backends apply a
 minimum standard deviation of `1e-6` before forming the threshold. Pixels outside
 that region receive zero in both output maps.
+
+For CUDA builds, set `RADAR_CUDA_ARCH` to the target GPU architecture, for
+example `RADAR_CUDA_ARCH=sm_89` for RTX 6000 Ada. If unset, nvcc uses its
+default architecture. Rebuild after changing the setting.
