@@ -170,16 +170,30 @@ def test_prediction_parity_reports_drift_counts_and_limit():
 def test_invalid_prediction_is_rejected():
     coco = {"images": [{"id": 1, "width": 10, "height": 10}], "categories": [{"id": 1}]}
     replay.validate_predictions([prediction()], coco)
-    out_of_bounds = prediction()
-    out_of_bounds["bbox"][2] = 8
-    with pytest.raises(ValueError, match="native raster"):
-        replay.validate_predictions([out_of_bounds], coco)
     degenerate = prediction()
     degenerate["bbox"][2] = 0
     assert replay.validate_predictions([degenerate], coco)["degenerate_boxes"] == 1
-    degenerate["bbox"][2] = -1
-    with pytest.raises(ValueError, match="native raster"):
-        replay.validate_predictions([degenerate], coco)
+    for dimension in (2, 3):
+        invalid = prediction()
+        invalid["bbox"][dimension] = -1
+        with pytest.raises(ValueError, match="negative dimension"):
+            replay.validate_predictions([invalid], coco)
+
+
+def test_native_out_of_canvas_predictions_are_preserved_and_counted():
+    coco = {"images": [{"id": 1, "width": 10, "height": 10}], "categories": [{"id": 1}]}
+    predictions = [
+        prediction(),
+        {**prediction(), "bbox": [-2.0, -3.0, 5.0, 6.0]},
+        {**prediction(), "bbox": [3.0, 4.0, 8.0, 9.0]},
+    ]
+    original = json.loads(json.dumps(predictions))
+    assert replay.validate_predictions(predictions, coco) == {
+        "prediction_count": 3,
+        "degenerate_boxes": 0,
+        "out_of_canvas_boxes": 2,
+    }
+    assert predictions == original
 
 
 def test_replay_verifies_before_predict_and_refuses_overwrite(tmp_path, monkeypatch):

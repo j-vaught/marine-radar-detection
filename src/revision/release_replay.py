@@ -292,7 +292,7 @@ def predict(run, checkpoint, coco, images, observed, device, staging):
 def validate_predictions(predictions, coco):
     images = {row["id"]: row for row in coco["images"]}
     categories = {row["id"] for row in coco["categories"]}
-    degenerate = 0
+    degenerate, out_of_canvas = 0, 0
     for row in predictions:
         info = images.get(row["image_id"])
         if info is None or row["category_id"] not in categories or len(row["bbox"]) != 4:
@@ -300,16 +300,19 @@ def validate_predictions(predictions, coco):
         x, y, width, height = row["bbox"]
         if not all(math.isfinite(value) for value in [x, y, width, height, row["score"]]):
             raise ValueError("Nonfinite prediction")
-        if (
-            min(x, y) < -1e-4
-            or min(width, height) < 0
-            or x + width > info["width"] + 1e-4
-            or y + height > info["height"] + 1e-4
-            or not 0 <= row["score"] <= 1
-        ):
-            raise ValueError("Prediction is outside its native raster or score range")
+        if min(width, height) < 0 or not 0 <= row["score"] <= 1:
+            raise ValueError("Prediction has a negative dimension or invalid score")
         degenerate += int(min(width, height) == 0)
-    return {"prediction_count": len(predictions), "degenerate_boxes": degenerate}
+        # Native RT-DETR outputs are not clipped by the archived predictor.
+        # Count these boxes without changing the payload used for replay parity.
+        out_of_canvas += int(
+            min(x, y) < 0 or x + width > info["width"] or y + height > info["height"]
+        )
+    return {
+        "prediction_count": len(predictions),
+        "degenerate_boxes": degenerate,
+        "out_of_canvas_boxes": out_of_canvas,
+    }
 
 
 def compare_predictions(predictions, reference, image_ids, atol=0.0, rtol=0.0):
