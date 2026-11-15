@@ -285,10 +285,13 @@ def worker(job_path, completion_path, attempt):
                     f"CUDA device mismatch: expected {job['gpu_uuid']}, got {actual}"
                 )
         from src.revision.run import run_job
-        from src.revision.storage import stage_checkpoint_scratch
-
-        with stage_checkpoint_scratch(job):
+        if job.get("evaluation_from"):
             run_job(job)
+        else:
+            from src.revision.storage import stage_checkpoint_scratch
+
+            with stage_checkpoint_scratch(job):
+                run_job(job)
         metrics = Path(job["out_dir"]) / "metrics.json"
         if not metrics.is_file():
             raise RuntimeError(f"Missing metrics: {metrics}")
@@ -496,6 +499,15 @@ def schedule(args):
         for x in ids
     ):
         raise ValueError("job IDs must be unique and contain only letters, digits, _, - or .")
+    for job in jobs:
+        resource = job.get("resource")
+        if resource not in (None, "cpu", "gpu"):
+            raise ValueError(f"Invalid job resource: {resource!r}")
+        if job.get("evaluation_from"):
+            if resource != "cpu" or not job.get("required_host") or not Path(job["evaluation_from"]).is_absolute():
+                raise ValueError("Evaluation repair requires CPU, a required host, and an absolute parent path")
+        elif resource == "cpu" and job["method"] in GPU_METHODS:
+            raise ValueError("Learned CPU jobs require evaluation_from")
     while True:
         hosts = json.loads(args.hosts.read_text())["hosts"]
         approved_methods = set()
@@ -608,7 +620,8 @@ def schedule(args):
                     candidates = [
                         j
                         for j in jobs
-                        if (j["method"] in GPU_METHODS) == (device is not None)
+                        if (j.get("resource", "gpu" if j["method"] in GPU_METHODS else "cpu") == "gpu") == (device is not None)
+                        and (not j.get("required_host") or j["required_host"] == host)
                         and (
                             j.get("stage") == "diagnostic"
                             or (
@@ -625,7 +638,9 @@ def schedule(args):
                         and (
                             j["job_id"] not in records
                             or (
-                                records[j["job_id"]]["state"] == "infra_failed"
+                                (records[j["job_id"]]["state"] == "infra_failed"
+                                 or (records[j["job_id"]]["state"] == "repair_pending"
+                                     and j.get("evaluation_from")))
                                 and records[j["job_id"]]["attempt"] < 3
                             )
                         )
@@ -633,7 +648,10 @@ def schedule(args):
                     if not candidates:
                         continue
                     job = min(
-                        candidates, key=lambda candidate: candidate.get("stage") != "diagnostic"
+                        candidates, key=lambda candidate: (
+                            0 if candidate.get("stage") == "diagnostic" else
+                            1 if records.get(candidate["job_id"], {}).get("state") == "repair_pending" else 2
+                        )
                     )
                     if device is not None:
                         try:

@@ -295,3 +295,59 @@ def test_subprocess_error_does_not_log_command():
     import subprocess
     assert fleet.concise_error(subprocess.TimeoutExpired("large secret script", 30)) == "command timed out after 30s"
     assert fleet.concise_error(subprocess.CalledProcessError(255, "large secret script")) == "command exited with status 255"
+
+
+def test_schedule_repair_uses_parent_host_cpu_and_new_attempt(tmp_path):
+    import hashlib
+    from types import SimpleNamespace
+
+    jobs = [
+        {"job_id": "diag", "method": "yolo", "stage": "diagnostic"},
+        {"job_id": "ordinary", "method": "yolo", "stage": "core", "resource": "cpu",
+         "evaluation_from": "/r/runs/ordinary/1", "required_host": "parent"},
+        {"job_id": "repair", "method": "yolo", "stage": "core", "resource": "cpu",
+         "evaluation_from": "/r/runs/repair/1", "required_host": "parent"},
+    ]
+    manifest = tmp_path / "jobs.json"
+    manifest.write_text(json.dumps(jobs))
+    cfg = {"result_root": "/r", "code_path": "/c", "venv_python": "/p", "data_path": "/d",
+           "data_verified": True, "protocol_sha256": "split", "code_commit": "release", "cpu_workers": 1}
+    hosts = tmp_path / "hosts.json"
+    hosts.write_text(json.dumps({"hosts": {"other": cfg, "parent": cfg}}))
+    approval = tmp_path / "approval.json"
+    approval.write_text(json.dumps({"approved": True, "jobs_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        "split_sha256": "split", "release_sha": "release", "diagnostic_job_ids": ["diag"], "approved_methods": ["yolo"]}))
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "diag.json").write_text(json.dumps({"state": "succeeded"}))
+    (state / "repair.json").write_text(json.dumps({"state": "repair_pending", "attempt": 1, "host": "parent"}))
+    args = SimpleNamespace(state=state, status=False, manifest=manifest, hosts=hosts,
+                           approval=approval, once=True, poll=60)
+    with (patch.object(fleet, "gpu_free", return_value=[(0, "GPU-0")]),
+          patch.object(fleet, "launch") as launch):
+        fleet.schedule(args)
+    assert launch.call_count == 1
+    host, _, job, record = launch.call_args.args
+    assert host == "parent" and job["job_id"] == "repair"
+    assert record["device"] is None and record["attempt"] == 2
+    assert record["out"] == "/r/runs/repair/2"
+
+
+def test_repair_worker_bypasses_checkpoint_scratch(tmp_path):
+    import hashlib
+    from contextlib import nullcontext
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    job = {"job_id": "repair", "method": "yolo", "out_dir": str(tmp_path), "attempt_nonce": "n",
+           "manifest": str(manifest), "protocol_sha256": hashlib.sha256(b"{}").hexdigest(),
+           "evaluation_from": "/r/runs/repair/1", "device": "cpu"}
+    job_file = tmp_path / "job.json"
+    job_file.write_text(json.dumps(job))
+    (tmp_path / "metrics.json").write_text("{}")
+    with (patch.object(fleet, "process_identity", return_value={"pid": 1, "start_ticks": "1", "boot_id": "b"}),
+          patch("src.revision.run.run_job") as run, patch("src.revision.storage.stage_checkpoint_scratch", return_value=nullcontext()) as stage,
+          patch.object(fleet, "validate_metrics")):
+        assert fleet.worker(str(job_file), str(tmp_path / "completion.json"), 2) == 0
+    run.assert_called_once()
+    stage.assert_not_called()
