@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -17,7 +19,7 @@ import time
 import uuid
 from pathlib import Path
 
-from revision.fleet import quote_cmd, ssh, ssh_options
+from .fleet import quote_cmd, ssh, ssh_options
 
 DEFAULT_ROOT = "/mnt/12TB_Drive/dspire/atlantis-master/JACKIE_drone_training/wacv-signal-2027-paper-06/revision/archive"
 SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
@@ -87,6 +89,61 @@ def inventory(root):
         out[rel] = {'sha256': h.hexdigest(), 'size': path.stat().st_size}
     return out
 
+def archive_identity(job: str, attempt: str, record: dict, dest_host: str, root: str) -> str:
+    """Bind a verified archive to the immutable completion and both endpoints."""
+    value = {
+        "job": job,
+        "attempt": attempt,
+        "source_host": record["host"],
+        "source_out": record["out"],
+        "nonce": record.get("nonce"),
+        "result": record["result"],
+        "destination_host": dest_host,
+        "destination_root": root,
+    }
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def load_ledger(path: Path) -> dict:
+    if not path.exists():
+        return {"version": 1, "verified": {}}
+    value = json.loads(path.read_text())
+    if value.get("version") != 1 or not isinstance(value.get("verified"), dict):
+        raise ValueError(f"Invalid archive ledger: {path}")
+    return value
+
+
+def save_ledger(path: Path, ledger: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + f".{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        with tmp.open("x") as f:
+            json.dump(ledger, f, sort_keys=True, indent=2)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def process_record(job, attempt, record, dest_host, root, ledger, ledger_path, force=False):
+    identity = archive_identity(job, attempt, record, dest_host, root)
+    if identity in ledger["verified"]:
+        if not force:
+            return "already verified"
+        verified = dict(ledger["verified"])
+        del verified[identity]
+        save_ledger(ledger_path, {**ledger, "verified": verified})
+        ledger["verified"] = verified
+    result = archive_one(job, attempt, record, dest_host, root)
+    updated = {**ledger, "verified": {**ledger["verified"], identity: {"job": job, "attempt": attempt}}}
+    save_ledger(ledger_path, updated)
+    ledger["verified"] = updated["verified"]
+    return result
+
+
 def main():
     mode = sys.argv[1]
     if mode == 'inventory':
@@ -142,7 +199,11 @@ main()
 
 
 def remote_cmd(mode: str, *args: str) -> str:
-    program = "import base64;exec(base64.b64decode(" + repr(base64.b64encode(REMOTE.encode()).decode()) + "))"
+    program = (
+        "import base64;exec(base64.b64decode("
+        + repr(base64.b64encode(REMOTE.encode()).decode())
+        + "))"
+    )
     return quote_cmd(["python3", "-c", program, mode, *args])
 
 
@@ -173,8 +234,11 @@ def selected_records(state: Path):
 
 def remote_input(host: str, command: str, data: bytes) -> str:
     result = subprocess.run(
-        ["ssh", *ssh_options(host), host, command], input=data, stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, check=True, timeout=300,
+        ["ssh", *ssh_options(host), host, command],
+        input=data,
+        capture_output=True,
+        check=True,
+        timeout=300,
     )
     return result.stdout.decode().strip()
 
@@ -184,17 +248,21 @@ def stream_copy(host: str, source: str, dest_host: str, staging: str):
     with tempfile.TemporaryFile() as src_err, tempfile.TemporaryFile() as dst_err:
         source_process = subprocess.Popen(
             ["ssh", *ssh_options(host), host, remote_cmd("stream", source)],
-            stdout=subprocess.PIPE, stderr=src_err,
+            stdout=subprocess.PIPE,
+            stderr=src_err,
         )
         try:
             target_process = subprocess.Popen(
                 ["ssh", *ssh_options(dest_host), dest_host, remote_cmd("extract", staging)],
-                stdin=source_process.stdout, stdout=subprocess.DEVNULL, stderr=dst_err,
+                stdin=source_process.stdout,
+                stdout=subprocess.DEVNULL,
+                stderr=dst_err,
             )
         except BaseException:
             source_process.kill()
             source_process.wait()
             raise
+        assert source_process.stdout is not None
         source_process.stdout.close()
         try:
             target_code = target_process.wait(timeout=86400)
@@ -208,16 +276,20 @@ def stream_copy(host: str, source: str, dest_host: str, staging: str):
         if source_code or target_code:
             src_err.seek(0)
             dst_err.seek(0)
-            raise RuntimeError(f"Archive stream failed ({source_code}, {target_code}): "
-                               f"{src_err.read().decode(errors='replace')} "
-                               f"{dst_err.read().decode(errors='replace')}")
+            raise RuntimeError(
+                f"Archive stream failed ({source_code}, {target_code}): "
+                f"{src_err.read().decode(errors='replace')} "
+                f"{dst_err.read().decode(errors='replace')}"
+            )
 
 
 def archive_one(job: str, attempt: str, record: dict, dest_host: str, root: str):
     safe_id(job)
     if not attempt.isdigit() or int(attempt) < 1:
         raise ValueError("Invalid attempt")
-    source_inventory = json.loads(ssh(record["host"], remote_cmd("inventory", record["out"]), timeout=86400))
+    source_inventory = json.loads(
+        ssh(record["host"], remote_cmd("inventory", record["out"]), timeout=86400)
+    )
     if not source_inventory:
         raise ValueError("Refusing empty archive")
     manifest = json.dumps(source_inventory, sort_keys=True).encode()
@@ -230,23 +302,104 @@ def archive_one(job: str, attempt: str, record: dict, dest_host: str, root: str)
     return "verified" if existing else "archived"
 
 
+def archive_identity(job: str, attempt: str, record: dict, dest_host: str, root: str) -> str:
+    """Bind a verified archive to the immutable completion and both endpoints."""
+    value = {
+        "job": job,
+        "attempt": attempt,
+        "source_host": record["host"],
+        "source_out": record["out"],
+        "nonce": record.get("nonce"),
+        "result": record["result"],
+        "destination_host": dest_host,
+        "destination_root": root,
+    }
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def load_ledger(path: Path) -> dict:
+    if not path.exists():
+        return {"version": 1, "verified": {}}
+    value = json.loads(path.read_text())
+    if value.get("version") != 1 or not isinstance(value.get("verified"), dict):
+        raise ValueError(f"Invalid archive ledger: {path}")
+    return value
+
+
+def save_ledger(path: Path, ledger: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + f".{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        with tmp.open("x") as f:
+            json.dump(ledger, f, sort_keys=True, indent=2)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def process_record(job, attempt, record, dest_host, root, ledger, ledger_path, force=False):
+    identity = archive_identity(job, attempt, record, dest_host, root)
+    if identity in ledger["verified"]:
+        if not force:
+            return "already verified"
+        verified = dict(ledger["verified"])
+        del verified[identity]
+        save_ledger(ledger_path, {**ledger, "verified": verified})
+        ledger["verified"] = verified
+    result = archive_one(job, attempt, record, dest_host, root)
+    updated = {
+        **ledger,
+        "verified": {**ledger["verified"], identity: {"job": job, "attempt": attempt}},
+    }
+    save_ledger(ledger_path, updated)
+    ledger["verified"] = updated["verified"]
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--dest-host", default="comech-2080")
     parser.add_argument("--root", default=DEFAULT_ROOT)
+    parser.add_argument(
+        "--ledger",
+        type=Path,
+        help="Client verification ledger (default: archive-ledger.json beside the state directory)",
+    )
+    parser.add_argument(
+        "--verify-existing",
+        action="store_true",
+        help="Force a full source and destination checksum audit",
+    )
     parser.add_argument("--watch", action="store_true")
     parser.add_argument("--poll", type=int, default=60)
     parser.add_argument("--retries", type=int, default=3)
     args = parser.parse_args()
     if args.poll < 1 or args.retries < 1:
         parser.error("poll and retries must be positive")
+    ledger_path = args.ledger or args.state.parent / "archive-ledger.json"
+    if ledger_path.resolve().is_relative_to(args.state.resolve()):
+        parser.error("ledger must be outside the controller state directory")
+    ledger = load_ledger(ledger_path)
     while True:
         errors = 0
         for job, attempt, record in selected_records(args.state):
             for trial in range(args.retries):
                 try:
-                    result = archive_one(job, attempt, record, args.dest_host, args.root)
+                    result = process_record(
+                        job,
+                        attempt,
+                        record,
+                        args.dest_host,
+                        args.root,
+                        ledger,
+                        ledger_path,
+                        args.verify_existing,
+                    )
                     print(f"{job}/{attempt}: {result}", flush=True)
                     break
                 except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
@@ -254,7 +407,7 @@ def main():
                         errors += 1
                         print(f"{job}/{attempt}: {exc}", file=sys.stderr, flush=True)
                     else:
-                        time.sleep(min(2 ** trial, 10))
+                        time.sleep(min(2**trial, 10))
         if not args.watch:
             return int(bool(errors))
         time.sleep(args.poll)
