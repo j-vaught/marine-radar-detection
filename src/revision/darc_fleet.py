@@ -76,8 +76,12 @@ def gate_ok(path, kind, manifest_hash, protocol_hash, release, profile, jobs, re
             return False
         if kind == "scoring":
             diag = {j["job_id"] for j in jobs if j["stage"] == "diagnostic"}
+            digests = gate.get("diagnostic_metrics_sha256", {})
             return bool(diag) and set(gate.get("diagnostic_job_ids", [])) == diag and all(
-                records.get(job_id, {}).get("state") == "succeeded" for job_id in diag)
+                records.get(job_id, {}).get("state") == "succeeded"
+                and bool(digests.get(job_id))
+                and records[job_id].get("result", {}).get("metrics_sha256") == digests[job_id]
+                for job_id in diag)
         return True
     except (ValueError, TypeError):
         return False
@@ -403,11 +407,14 @@ def build_gate(args):
         diagnostics = [j["job_id"] for j in spec["jobs"] if j["stage"] == "diagnostic"]
         if len(diagnostics) != 12:
             raise ValueError("expected exactly 12 diagnostics")
+        metric_digests = {}
         for job_id in diagnostics:
             rec = json.loads((args.state / (job_id + ".json")).read_text())
             if rec.get("state") != "succeeded" or rec.get("result", {}).get("job_id") != job_id or not rec.get("result", {}).get("metrics_sha256"):
                 raise ValueError(f"missing validated diagnostic completion: {job_id}")
+            metric_digests[job_id] = rec["result"]["metrics_sha256"]
         gate["diagnostic_job_ids"] = diagnostics
+        gate["diagnostic_metrics_sha256"] = metric_digests
     fleet.atomic_json(args.output, gate)
 
 

@@ -33,9 +33,11 @@ def test_scoring_gate_requires_all_diagnostics(tmp_path):
     gate = tmp_path / "gate.json"
     gate.write_text(json.dumps({"approved": True, "kind": "scoring", "jobs_sha256": "jobs",
         "protocol_sha256": "protocol", "release_sha": "release", "runtime_profile_sha256": "profile",
-        "diagnostic_job_ids": ids}))
-    records = {job_id: {"state": "succeeded"} for job_id in ids}
+        "diagnostic_job_ids": ids, "diagnostic_metrics_sha256": {job_id: "hash" for job_id in ids}}))
+    records = {job_id: {"state": "succeeded", "result": {"metrics_sha256": "hash"}} for job_id in ids}
     assert d.gate_ok(gate, "scoring", "jobs", "protocol", "release", "profile", jobs, records)
+    records[ids[0]]["result"]["metrics_sha256"] = "new-attempt"
+    assert not d.gate_ok(gate, "scoring", "jobs", "protocol", "release", "profile", jobs, records)
     records[ids[0]]["state"] = "running"
     assert not d.gate_ok(gate, "scoring", "jobs", "protocol", "release", "profile", jobs, records)
     assert not d.gate_ok(gate, "scoring", "other", "protocol", "release", "profile", jobs, records)
