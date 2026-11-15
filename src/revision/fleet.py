@@ -285,6 +285,7 @@ def worker(job_path, completion_path, attempt):
                     f"CUDA device mismatch: expected {job['gpu_uuid']}, got {actual}"
                 )
         from src.revision.run import run_job
+
         if job.get("evaluation_from"):
             run_job(job)
         else:
@@ -431,8 +432,11 @@ print(p.pid)
                 json.dumps(resolved),
                 json.dumps(run),
                 record["gpu_uuid"] or "",
-                str(cfg.get("cpu_threads", cfg.get("threads", 4))
-                    if record["device"] is None else cfg.get("threads", 4)),
+                str(
+                    cfg.get("cpu_threads", cfg.get("threads", 4))
+                    if record["device"] is None
+                    else cfg.get("threads", 4)
+                ),
                 cfg.get("torch_home", root + "/torch-cache"),
             ]
         ),
@@ -504,8 +508,14 @@ def schedule(args):
         if resource not in (None, "cpu", "gpu"):
             raise ValueError(f"Invalid job resource: {resource!r}")
         if job.get("evaluation_from"):
-            if resource != "cpu" or not job.get("required_host") or not Path(job["evaluation_from"]).is_absolute():
-                raise ValueError("Evaluation repair requires CPU, a required host, and an absolute parent path")
+            if (
+                resource != "cpu"
+                or not job.get("required_host")
+                or not Path(job["evaluation_from"]).is_absolute()
+            ):
+                raise ValueError(
+                    "Evaluation repair requires CPU, a required host, and an absolute parent path"
+                )
         elif resource == "cpu" and job["method"] in GPU_METHODS:
             raise ValueError("Learned CPU jobs require evaluation_from")
     while True:
@@ -570,7 +580,10 @@ def schedule(args):
                     ValueError,
                     json.JSONDecodeError,
                 ) as exc:
-                    print(f"{now()} {job['job_id']}: host/status unavailable: {concise_error(exc)}", flush=True)
+                    print(
+                        f"{now()} {job['job_id']}: host/status unavailable: {concise_error(exc)}",
+                        flush=True,
+                    )
             records[job["job_id"]] = record
         if args.approval.is_file():
             gate = json.loads(args.approval.read_text())
@@ -620,7 +633,11 @@ def schedule(args):
                     candidates = [
                         j
                         for j in jobs
-                        if (j.get("resource", "gpu" if j["method"] in GPU_METHODS else "cpu") == "gpu") == (device is not None)
+                        if (
+                            j.get("resource", "gpu" if j["method"] in GPU_METHODS else "cpu")
+                            == "gpu"
+                        )
+                        == (device is not None)
                         and (not j.get("required_host") or j["required_host"] == host)
                         and (
                             j.get("stage") == "diagnostic"
@@ -638,9 +655,13 @@ def schedule(args):
                         and (
                             j["job_id"] not in records
                             or (
-                                (records[j["job_id"]]["state"] == "infra_failed"
-                                 or (records[j["job_id"]]["state"] == "repair_pending"
-                                     and j.get("evaluation_from")))
+                                (
+                                    records[j["job_id"]]["state"] == "infra_failed"
+                                    or (
+                                        records[j["job_id"]]["state"] == "repair_pending"
+                                        and j.get("evaluation_from")
+                                    )
+                                )
                                 and records[j["job_id"]]["attempt"] < 3
                             )
                         )
@@ -648,10 +669,14 @@ def schedule(args):
                     if not candidates:
                         continue
                     job = min(
-                        candidates, key=lambda candidate: (
-                            0 if candidate.get("stage") == "diagnostic" else
-                            1 if records.get(candidate["job_id"], {}).get("state") == "repair_pending" else 2
-                        )
+                        candidates,
+                        key=lambda candidate: (
+                            0
+                            if candidate.get("stage") == "diagnostic"
+                            else 1
+                            if records.get(candidate["job_id"], {}).get("state") == "repair_pending"
+                            else 2
+                        ),
                     )
                     if device is not None:
                         try:
@@ -667,7 +692,9 @@ def schedule(args):
                         launch(host, cfg, job, record)
                         record.update(state="launching")
                     except (subprocess.SubprocessError, OSError, ValueError) as exc:
-                        record.update(state="uncertain", error=f"launch outcome unknown: {concise_error(exc)}")
+                        record.update(
+                            state="uncertain", error=f"launch outcome unknown: {concise_error(exc)}"
+                        )
                     atomic_json(path, record)
                     records[job["job_id"]] = record
                     used.add((host, record["device"]))

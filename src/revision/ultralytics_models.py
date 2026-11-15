@@ -84,6 +84,8 @@ def _coordinate_predictor():
 
     class ExactLetterboxPredictor(DetectionPredictor):
         def construct_result(self, pred, img, orig_img, img_path):
+            if self.model is None:
+                raise RuntimeError("Prediction requires an initialized model")
             ratio_pad = _letterbox_ratio_pad(img.shape[2:], orig_img.shape)
             pred[:, :4] = ops.scale_boxes(
                 img.shape[2:], pred[:, :4], orig_img.shape, ratio_pad=ratio_pad

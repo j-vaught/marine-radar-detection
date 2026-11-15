@@ -6,6 +6,7 @@ import json
 import shutil
 import time
 from pathlib import Path
+from typing import Any
 
 from . import evaluation, protocol
 from .ultralytics_models import _predict, stage_split
@@ -130,7 +131,7 @@ def evaluate_from_parent(job: dict) -> dict:
     )
     val_seconds = time.perf_counter() - t0
     protocol.save_json(out / "validation_raw.json", val_raw)
-    sweep = []
+    sweep: list[dict[str, Any]] = []
     for threshold in thresholds:
         filtered = [p for p in val_raw if p["score"] >= threshold]
         protocol.save_json(out / f"validation_threshold_{threshold:.8g}.json", filtered)
