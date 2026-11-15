@@ -257,6 +257,7 @@ def run_job(job: dict) -> dict:
                     grouped, paths["train"], data["image_dir"], device, cfar_caches
                 )
                 group_window = window
+            assert group_predictions is not None
             pred = group_predictions[_cfar_key(cfg)].to_coco()
             save_json(out / f"candidate_{i:04d}_train_predictions.json", pred)
         else:

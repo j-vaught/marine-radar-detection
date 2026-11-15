@@ -71,13 +71,13 @@ def test_cfar_group_predictions_match_serial(monkeypatch):
     import numpy as np
     import torch
 
-    protocol = types.ModuleType("src.revision.protocol")
+    protocol: Any = types.ModuleType("src.revision.protocol")
     protocol.prepare_job = protocol.save_json = protocol.set_seed = protocol.sha256_file = (
         lambda *a: None
     )
-    evaluation = types.ModuleType("src.revision.evaluation")
+    evaluation: Any = types.ModuleType("src.revision.evaluation")
     evaluation.evaluate_coco = lambda *a: None
-    legacy = types.ModuleType("src.cfar.gpu.eval_coco")
+    legacy: Any = types.ModuleType("src.cfar.gpu.eval_coco")
     legacy.build_gt_index = legacy.evaluate = legacy.fast_ap50 = lambda *a: None
     monkeypatch.setitem(sys.modules, protocol.__name__, protocol)
     monkeypatch.setitem(sys.modules, evaluation.__name__, evaluation)
