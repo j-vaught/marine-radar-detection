@@ -4,7 +4,7 @@ The revision evaluates each source-trained detector on the same fixed destinatio
 
 ## Release and environment
 
-Set `RELEASE_SHA` to worker commit `3ed180804db2a3dd24420b51099ee0771ef2db43`. Use the controller checkout containing `experiments/review-2026-11/jobs.json` and the fleet, archive, and finalization commands below. Record both commits. Set `RESULT_ROOT` to the permanent run directory on each worker and `DATA_ROOT` to the processed release containing `annotations/all.json` and `images/`. Keep the processed inputs read-only and compare their hashes with the frozen manifest when staging each worker.
+The initial worker release is `3ed180804db2a3dd24420b51099ee0771ef2db43`. The active worker release, including corrected YOLO26 evaluation, is `f0bd687afdac8f2c8ce7fab5cb8f44f12c148b21`. Preserve the recorded commit of each archived attempt. Use analysis commit `8595d4c56706fb57944f4b2ad10fc2a360e358e1` to replay the repair-aware matrix and paired block analysis. For worker staging, set `RELEASE_SHA` to the applicable worker commit and `RESULT_ROOT` to the permanent run directory on that worker. Set `DATA_ROOT` to the processed release containing `annotations/all.json` and `images/`. Keep the processed inputs read-only and compare their hashes with the frozen manifest when staging each worker.
 
 Create an empty release directory on each worker and extract the committed tree there. Run the locked install from that directory. [Revision environment](revision-environment.md). Use Python 3.11 and a compatible NVIDIA driver for the CUDA pilot. The Linux x86-64 lock uses the CUDA 12.1 builds of PyTorch 2.5.1 and torchvision 0.20.1, alongside Ultralytics 8.4.14 and pycocotools 2.0.11. Keep the lock, interpreter version, and installed package versions with the worker evidence.
 
@@ -52,9 +52,11 @@ uv run --locked python -m src.revision.protocol \
   --output "$SPLIT"
 ```
 
-The split sorts each site by its numeric frame index. At the floor-rounded 15%, 20%, 80%, and 85% boundaries, it defines validation, a validation buffer, training, a test buffer, and test. It records the image and annotation hashes, partition IDs, and nearest cross-partition frame-index distances. The adjacency arm replaces an equal number of core training images with the pre-test buffer images, using a recorded seed-dependent SHA-256 ordering for removal. The validation and test images remain fixed. The archive establishes frame-index separation. Verified recording chronology and persistent vessel tracks are unavailable.
+The split sorts each site by its numeric frame index. At the floor-rounded 15%, 20%, 80%, and 85% boundaries, it defines validation, a validation buffer, training, a test buffer, and test. It records the image and annotation hashes, partition IDs, and nearest cross-partition frame-index distances. The adjacency arm replaces an equal number of core training images with the pre-test buffer images, using a recorded seed-dependent SHA-256 ordering for removal. The validation and test images remain fixed. The archive establishes frame-index separation. Verified recording chronology and persistent vessel tracks are unavailable. The frozen `split_manifest.json` has SHA-256 `03b7d1d48e5faac7872a04f8fb23580a748ca1521539e99b0e54bf45c7d8f4aa`.
 
-Use the checked-in job manifest directly. It declares 110 jobs, comprising 17 source-only diagnostics and 93 benchmark jobs. Four learned models use five seeds across three sources for 60 core fits. Five deterministic classical methods use one source parameter selection per site for 15 core jobs. Faster R-CNN and YOLO26 each run the adjacency arm on three sources with seeds 0–2 for another 18 learned jobs. The 93 benchmark jobs produce 279 destination evaluations. The diagnostic jobs have empty `eval_targets`.
+The checked-in manifest defines 110 jobs for a fresh run, comprising 17 source-only diagnostics and 93 benchmark jobs. Four learned models use five seeds across three sources for 60 core fits. Five deterministic classical methods use one source parameter selection per site for 15 core jobs. Faster R-CNN and YOLO26 each run the adjacency arm on three sources with seeds 0–2 for another 18 learned jobs. The 93 benchmark jobs produce 279 destination evaluations. The diagnostic jobs have empty `eval_targets`. They comprise 12 learned smoke fits with a 32-frame source training subset and five classical checks with diagnostic candidates. Earlier smoke attempts and the three [Wavelet extension studies](../src/revision/wavelet_study.md) are tracked separately from the matrix.
+
+For replay of the archived revision, use the resolved job file saved under `analysis/manifests/jobs-4974b11959f16c9b4ea803bbebfc1db65d98d271112b385e09bd3eac49ac1c0b.json` on COMECH 2080. Its SHA-256 is `4974b11959f16c9b4ea803bbebfc1db65d98d271112b385e09bd3eac49ac1c0b`. It retains the 110 job IDs and adds the runtime repair fields to four existing YOLO26 jobs.
 
 ## Gate and run the fleet
 
@@ -65,7 +67,7 @@ The controller uses a host JSON file that maps SSH aliases to staged paths and w
   "hosts": {
     "worker-alias": {
       "code_path": "/path/to/clean-worker-release",
-      "code_commit": "3ed180804db2a3dd24420b51099ee0771ef2db43",
+    "code_commit": "f0bd687afdac8f2c8ce7fab5cb8f44f12c148b21",
       "data_path": "/path/to/processed",
       "result_root": "/path/to/permanent-revision-storage",
       "venv_python": "/path/to/locked-environment/bin/python",
@@ -98,36 +100,48 @@ After the source-only diagnostics and recipe review, the gate JSON records `appr
 
 The Torch runners select the learned checkpoint by source-validation loss. The Ultralytics runners record their source-validation fitness and selected epoch. Learned score thresholds use source-validation COCO metrics. U-Net also selects its pixel threshold there. The classical runners score candidates on source training and rerank the five finalists on source validation before applying the selected configuration to all three holdouts. The test pass uses the frozen source selection.
 
-The common evaluator follows Common Objects in Context (COCO) bounding-box evaluation with one foreground class and `maxDets=[1,10,100]`. Prediction rows contain `image_id`, `category_id`, `bbox` in pixel `[x,y,width,height]`, and `score`. The evaluator records `ap`, `ap50`, `ap75`, `ar100`, `predictions`, and `preds_per_image`. Raw predictions support ranking metrics. The learned runners also archive their operating-point predictions after applying the source-selected score threshold. Average precision (AP) and average recall (AR) measure agreement with the available reference labels.
+The RT-DETR worker sets `warmup_bias_lr=0.0` with the configured base learning rate of `0.0001`. The Wavelet native build covers the full frame in CUDA, uses the same threshold population on CPU and CUDA, and clears excluded pixels. The extension studies record their source-validation selections before opening the three holdouts. See the [Wavelet extension workflow](../src/revision/wavelet_study.md).
+
+The common evaluator follows Common Objects in Context (COCO) bounding-box evaluation with one foreground class and `maxDets=[1,10,100]`. Prediction rows contain `image_id`, `category_id`, `bbox` in pixel `[x,y,width,height]`, and `score`. The evaluator records `ap`, `ap50`, `ap75`, `ar100`, `predictions`, and `preds_per_image`. Raw predictions for ranking metrics retain each method's inference settings. Faster R-CNN uses a score floor of zero with proposal filtering, non-maximum suppression, and up to 300 returned detections. U-Net extracts components from the selected pixel threshold. YOLO26 and RT-DETR use a score floor of 0.001. The learned runners also archive their operating-point predictions after applying the source-selected score threshold. Average precision (AP) and average recall (AR) measure agreement with the available reference labels.
 
 Each attempt preserves the resolved job, worker receipt and completion record, metrics, and predictions. Learned attempts also preserve their checkpoint and epoch logs. The completion records the metrics digest. Per-run metadata ties the results to the annotation and split digests and the selected model or classical parameters. Per-target metadata identifies the COCO subset digest and, for learned runs, the selected checkpoint digest. The finalizer checks these identities against the reconstructed holdouts and the archive.
+
+Add both attempts for each repaired core YOLO26 job to any replay copy. The resolved matrix specifies CPU-only attempt 2 for `core-yolo-DAAN-s0`, `core-yolo-DAAN-s1`, `core-yolo-DARC-s0`, and `core-yolo-MANV-s0`. Each repair loads the checkpoint from GPU attempt 1 and re-runs validation threshold selection and the three target evaluations. The evaluation recipe `yolo-exact-letterbox-v1` maps the box coordinates back through the actual resize and integer padding. Attempt 2 binds the parent checkpoint, metrics, receipt, completion, code commit, and training runtime provenance. The finalizer requires this chain and preserves the original GPU training timing and peak memory alongside the CPU evaluation timing. Each subsequent YOLO26 core or adjacency run must also carry the corrected recipe, whether scored during the original worker attempt or through a verified repair.
 
 ## Archive and replay
 
 Where configured and available, the worker stages frequent checkpoint writes on the local solid-state drive. It verifies the file inventory and SHA-256 digests after copying to the permanent hard drive. A successful copy replaces temporary paths with verified archive files. Checkpoint staging status, bytes, and copy time are recorded separately. The worker records a recoverable archive failure when a copy cannot be verified.
 
-Archive finished attempts at `ARCHIVE_ROOT/job_id/attempt` on a permanent storage host. The archive command compares source and destination inventories and writes a verification ledger. Pass `--verify-existing` when a full checksum scan of previously verified attempts is required.
+Archive finished attempts at `ARCHIVE_ROOT/job_id/attempt` on a permanent storage host. The archive command compares source and destination inventories and writes a verification ledger. Pass `--verify-existing` when a full checksum scan of previously verified attempts is required. Where the source and archive hosts have a configured pinned TLS route, `--transport-config` enables transfers directly between the hosts.
 
 ```sh
 uv run --locked python -m src.revision.archive \
   --state "$STATE" --dest-host "$ARCHIVE_HOST" --root "$ARCHIVE_ROOT" --watch
-
-uv run --locked python -m src.revision.fleet collect \
-  --state "$STATE" --dest "$COLLECTED" --metadata-only
 ```
 
-Worker completions and metrics carry runtime provenance. Report training and inference times using the timers recorded by the particular runner. Torch records training time and the full target evaluation-loop time. Ultralytics records training time and inference time per target. Classical `grid_seconds` covers the candidate search and validation rerank. These boundaries differ. Device model, GPU UUID, compute capability, memory, driver and runtime provenance, and CPU thread settings identify the hardware and process behind each timing where recorded. Peak GPU allocation is a framework measurement. Archive copies and scheduling time are recorded separately. RT-DETR's CUDA `grid_sample` backward pass is a recorded source of nondeterminism.
+Worker completions and metrics carry runtime provenance. Report training and inference times using the timers recorded by the particular runner. Torch records training time and the full target evaluation-loop time. Ultralytics records training time and inference time per target. Classical `grid_seconds` covers the candidate search and validation rerank. These boundaries differ. Device model, GPU UUID, compute capability, memory, driver and runtime provenance, and CPU thread settings identify the hardware and process behind each timing where recorded. Peak GPU allocation is a framework measurement. Archive copies and scheduling time are recorded separately. RT-DETR's CUDA `grid_sample` backward pass is a recorded source of nondeterminism. Seed summaries measure observed variation across the fixed sites and split under the declared recipes and recorded hardware assignments.
 
-Run the finalizer after collecting all declared attempts. The JSON, CSV, and log collection suffices for report generation. Preserve the `job_id/attempt` layout and include the three raw prediction files for each core job. The finalizer writes progress for incomplete archives and opens the held-out references for analysis only after all expected attempts pass preflight.
+Run the finalizer from a checkout or extracted release at the analysis commit above, with the locked Python environment. The full attempt archive is the input for this replay. A metadata copy from the archive must preserve the `job_id/attempt` layout, both attempts for each repaired YOLO26 job, and the three raw prediction files for every core and adjacency job. The fleet metadata collector follows the current state record for each job, so that output alone leaves the earlier YOLO26 training attempts out of the replay chain. The finalizer writes progress for incomplete archives and requires all expected attempts to pass preflight.
+
+The fixed index-block specification partitions each target holdout into five disjoint blocks in ascending frame-index order. For a test set of size `N`, consecutive boundaries are `floor(j*N/5)` for `j=0,...,5`. The finalizer drops the same block from the local and incoming evaluations before computing each paired gap. The ranges describe sensitivity to test composition on the three fixed sites. On COMECH 2080, `protocol/index-blocks.json` has SHA-256 `ace0f0648228fb183ac52a159ef5072689b7ca01ae399e32a6a27feb4cb63834`. The geometry cache is optional and can be rebuilt from verified predictions and references. The archive's `analysis/geometry-cache` holds reusable per-run reference scores.
 
 ```sh
+RESULT_ROOT=/mnt/12TB_Drive/dspire/atlantis-master/JACKIE_drone_training/wacv-signal-2027-paper-06/revision
+DATA_ROOT="${RESULT_ROOT%/revision}/assets/processed"
+ARCHIVE_ROOT="$RESULT_ROOT/archive"
+SPLIT="$RESULT_ROOT/protocol/split_manifest.json"
+BLOCKS="$RESULT_ROOT/protocol/index-blocks.json"
+JOBS="$RESULT_ROOT/analysis/manifests/jobs-4974b11959f16c9b4ea803bbebfc1db65d98d271112b385e09bd3eac49ac1c0b.json"
+CACHE_DIR="$RESULT_ROOT/analysis/geometry-cache"
+REPORT_DIR="$RESULT_ROOT/analysis/final-report"
+
 uv run --locked python -m src.revision.finalize \
-  --jobs "$JOBS" --runs-dir "$COLLECTED" \
+  --jobs "$JOBS" --runs-dir "$ARCHIVE_ROOT" \
   --split-manifest "$SPLIT" --annotations "$DATA_ROOT/annotations/all.json" \
-  --output-dir "$REPORT_DIR"
+  --blocks "$BLOCKS" --cache-dir "$CACHE_DIR" --output-dir "$REPORT_DIR"
 ```
 
-The report includes full test rows, seed and adjacency estimates, learning-curve metadata, and reference-geometry estimates. The finalizer replays the core raw predictions against the released references, then scores the same predictions on 11 geometry variants. The fixed source envelope uses the median width and height of the source training labels. Its comparisons stay within the same source and destination. The geometry study uses the released object inventory and requires zero manual labeling. The automated provenance audit documents annotation-construction agreement and discrepancies. The geometry study leaves association accuracy and omitted vessels unresolved where independently synchronized reference positions are unavailable.
+The report includes full test rows, seed and adjacency estimates, learning-curve metadata, paired block deletion ranges, and reference-geometry estimates. The finalizer replays the core raw predictions against the released references, then scores the same predictions on 11 geometry variants. The fixed source envelope uses the median width and height of the source training labels. Its comparisons stay within the same source and destination. The geometry study uses the released object inventory and requires zero manual labeling. The automated provenance audit documents annotation-construction agreement and discrepancies. The geometry study leaves association accuracy and omitted vessels unresolved where independently synchronized reference positions are unavailable.
 
 Run the automated annotation-provenance audit on the released inputs. The audit records coordinate and eligibility agreement with the implemented candidate extraction rules.
 
