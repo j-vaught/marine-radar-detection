@@ -65,12 +65,49 @@ def _model_spec(method: str, initialization: str, cfg: dict) -> str:
     return str(Path(variant).with_suffix(".yaml" if initialization == "scratch" else ".pt"))
 
 
-def _predict(model, directory: Path, coco: dict, *, floor: float, device, imgsz: int) -> list[dict]:
+def _letterbox_ratio_pad(canvas_shape, original_shape):
+    """Invert the actual rounded LetterBox resize and asymmetric padding."""
+    height, width = original_shape[:2]
+    canvas_h, canvas_w = canvas_shape[:2]
+    gain = min(canvas_h / height, canvas_w / width)
+    resized_w, resized_h = round(width * gain), round(height * gain)
+    left = round((canvas_w - resized_w) / 2 - 0.1)
+    top = round((canvas_h - resized_h) / 2 - 0.1)
+    return ((gain, gain), (left, top))
+
+
+def _coordinate_predictor():
+    """Create YOLO predictor that maps the raw boxes before clipping."""
+    from ultralytics.engine.results import Results
+    from ultralytics.models.yolo.detect.predict import DetectionPredictor
+    from ultralytics.utils import ops
+
+    class ExactLetterboxPredictor(DetectionPredictor):
+        def construct_result(self, pred, img, orig_img, img_path):
+            ratio_pad = _letterbox_ratio_pad(img.shape[2:], orig_img.shape)
+            pred[:, :4] = ops.scale_boxes(
+                img.shape[2:], pred[:, :4], orig_img.shape, ratio_pad=ratio_pad
+            )
+            return Results(orig_img, path=img_path, names=self.model.names, boxes=pred[:, :6])
+
+    return ExactLetterboxPredictor
+
+
+def _predict(
+    model, directory: Path, coco: dict, *, floor: float, device, imgsz: int, method: str = "yolo"
+) -> list[dict]:
     categories = sorted(c["id"] for c in coco["categories"])
     image_ids = {str(i["id"]): i["id"] for i in coco["images"]}
     predictions = []
+    options = {"predictor": _coordinate_predictor()} if method == "yolo" else {}
     for result in model.predict(
-        source=str(directory), conf=floor, device=device, imgsz=imgsz, stream=True, verbose=False
+        source=str(directory),
+        conf=floor,
+        device=device,
+        imgsz=imgsz,
+        stream=True,
+        verbose=False,
+        **options,
     ):
         if result.boxes is None:
             continue
@@ -99,6 +136,11 @@ def run_job(job: dict) -> dict:
     from ultralytics import RTDETR, YOLO
 
     from . import evaluation, protocol
+
+    if job.get("evaluation_from"):
+        from .yolo_repair import evaluate_from_parent
+
+        return evaluate_from_parent(job)
 
     method = job["method"].lower()
     if method not in ("yolo", "rtdetr"):
@@ -303,7 +345,9 @@ def run_job(job: dict) -> dict:
     )
     if not thresholds or min(thresholds) < floor:
         raise ValueError("threshold grid must be nonempty and at or above score floor")
-    val_raw = _predict(selected, val_dir, val, floor=floor, device=device, imgsz=int(t["imgsz"]))
+    val_raw = _predict(
+        selected, val_dir, val, floor=floor, device=device, imgsz=int(t["imgsz"]), method=method
+    )
     protocol.save_json(out / "validation_raw.json", val_raw)
     sweep: list[dict[str, Any]] = []
     for threshold in thresholds:
@@ -324,7 +368,13 @@ def run_job(job: dict) -> dict:
         target_dir = stage_split(coco, Path(prepared["image_dir"]), data_root / "test" / target)
         tick = time.perf_counter()
         raw = _predict(
-            selected, target_dir, coco, floor=floor, device=device, imgsz=int(t["imgsz"])
+            selected,
+            target_dir,
+            coco,
+            floor=floor,
+            device=device,
+            imgsz=int(t["imgsz"]),
+            method=method,
         )
         elapsed = time.perf_counter() - tick
         filtered = [p for p in raw if p["score"] >= choice["threshold"]]
@@ -381,6 +431,9 @@ def run_job(job: dict) -> dict:
         "training_seconds": training_seconds,
         "peak_vram_bytes": torch.cuda.max_memory_allocated() if is_cuda else None,
         "ultralytics_version": ultralytics.__version__,
+        "evaluation_recipe": "yolo-exact-letterbox-v1"
+        if method == "yolo"
+        else "rtdetr-scalefill-v1",
         "job": {k: str(v) if isinstance(v, Path) else v for k, v in job.items()},
         "config": cfg,
         "train_args": args,
