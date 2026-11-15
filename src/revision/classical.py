@@ -123,6 +123,29 @@ def _cfar_predictions(method, config, ann_path, image_dir, device, caches):
     return preds[key].to_coco()
 
 
+def _cfar_group_predictions(configs, ann_path, image_dir, device, caches):
+    """Compute all requested thresholds for one window in one pass."""
+    import numpy as np
+    from src.cfar.gpu.data import load_corpus
+    from src.cfar.experiments.grid import BackgroundCache, predict_subset
+
+    if ann_path not in caches:
+        corpus = load_corpus(str(ann_path), str(image_dir), device=device)
+        caches[ann_path] = (corpus, BackgroundCache(corpus))
+    corpus, cache = caches[ann_path]
+    first = configs[0]
+    pfas = list(dict.fromkeys(c["pfa"] for c in configs))
+    areas = list(dict.fromkeys(c["min_area"] for c in configs))
+    ks = list(dict.fromkeys(c["os_k"] for c in configs)) if first["method"] == "OS" else [0.5, 0.75, 0.9]
+    return predict_subset(corpus, cache, np.arange(corpus.N), first["method"],
+                          first["guard"], first["ref"], pfas=pfas, min_areas=areas, os_ks=ks)
+
+
+def _cfar_key(config):
+    key = (config["pfa"], config["min_area"])
+    return key + (config["os_k"],) if config["method"] == "OS" else key
+
+
 def run_job(job: dict) -> dict:
     """Tune on train, choose top five on validation, then evaluate frozen tests."""
     set_seed(job["seed"])
@@ -206,10 +229,20 @@ def run_job(job: dict) -> dict:
             {k: v for k, v in cfg.items() if v is not None}
             for cfg in json.loads((sweep_dir / "configs.json").read_text())
         ]
+    group_window = None
+    group_predictions = None
     for i, cfg in enumerate(grid):
         tick = time.monotonic()
         if native_sweep:
             pred = json.loads((sweep_dir / f"candidate_{i:04d}.json").read_text())
+        elif method in ("ca_cfar", "os_cfar"):
+            window = (cfg["method"], cfg["guard"], cfg["ref"])
+            if window != group_window:
+                grouped = [c for c in grid if (c["method"], c["guard"], c["ref"]) == window]
+                group_predictions = _cfar_group_predictions(grouped, paths["train"], data["image_dir"], device, cfar_caches)
+                group_window = window
+            pred = group_predictions[_cfar_key(cfg)].to_coco()
+            save_json(out / f"candidate_{i:04d}_train_predictions.json", pred)
         else:
             pred = predict(cfg, "train", f"candidate_{i:04d}_train")
         score = evaluate_coco(train, pred)
