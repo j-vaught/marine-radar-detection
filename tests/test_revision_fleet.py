@@ -14,8 +14,8 @@ def test_matrix_counts_and_targets():
 
 
 def test_gpu_free_rejects_busy_uuid():
-    with patch.object(fleet, "ssh", side_effect=["0, GPU-a\n1, GPU-b\n", "GPU-a, 123\n"]):
-        assert fleet.gpu_free("host", {}) == [(1, "GPU-b")]
+    with patch.object(fleet, 'ssh', return_value='0, GPU-a\n1, GPU-b\n__REVISION_PROCESS_LIST__\nGPU-a, 123\n'):
+        assert fleet.gpu_free('host', {}) == [(1, 'GPU-b')]
 
 
 def test_worker_records_model_failure(tmp_path):
