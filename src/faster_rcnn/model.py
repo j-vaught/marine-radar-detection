@@ -1,4 +1,5 @@
 """Marine Faster R-CNN training and inference helpers."""
+
 from __future__ import annotations
 
 from contextlib import nullcontext
@@ -6,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.utils.data import DataLoader
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
@@ -55,6 +56,7 @@ def build_model(
     weights = "DEFAULT" if pretrained else None
     model = fasterrcnn_resnet50_fpn(
         weights=weights,
+        weights_backbone=None,
         rpn_anchor_generator=anchor_generator,
         rpn_pre_nms_top_n_train=int(model_cfg["rpn_pre_nms_top_n_train"]),
         rpn_post_nms_top_n_train=int(model_cfg["rpn_post_nms_top_n_train"]),
@@ -215,9 +217,8 @@ def predict_faster_rcnn(
     model.eval()
     model.to(resolved_device)
 
-    with torch.no_grad():
-        with _maybe_autocast(resolved_device, resolved_device.type == "cuda"):
-            prediction = model([image.to(resolved_device)])[0]
+    with torch.no_grad(), _maybe_autocast(resolved_device, resolved_device.type == "cuda"):
+        prediction = model([image.to(resolved_device)])[0]
 
     boxes = prediction["boxes"].detach().cpu().numpy()
     scores = prediction["scores"].detach().cpu().numpy()
