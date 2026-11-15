@@ -88,6 +88,9 @@ def run_job(job: dict) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     method = job["method"]
     overrides = job.get("config_overrides") or {}
+    device = str(job.get("device", "cpu"))
+    binary_key = ("native_wavelet_gpu" if device.startswith("cuda") else "native_wavelet_cpu") if method == "wavelet" else "native_otsu"
+    binary = overrides.get("binary") or job.get(binary_key)
     train, val = data["train"], data["validation"]
     datasets = {"train": train, "validation": val}
     for site, coco in data["tests"].items():
@@ -107,7 +110,7 @@ def run_job(job: dict) -> dict:
             save_json(destination, pred)
         else:
             pred = _native_predictions(method, config, paths[name], data["image_dir"], destination,
-                                       job.get("device", "cpu"), overrides.get("binary"))
+                                       device, binary)
         return pred
 
     start = time.monotonic()
@@ -117,7 +120,7 @@ def run_job(job: dict) -> dict:
         raise ValueError("Empty candidate grid")
     native_sweep = method in ("otsu", "ss_otsu") and not overrides.get("candidates") and not overrides.get("fixed")
     if native_sweep:
-        exe = Path(overrides.get("binary", ROOT / "src/otsu/target/release/otsu"))
+        exe = Path(binary or ROOT / "src/otsu/target/release/otsu")
         if not exe.is_file():
             raise FileNotFoundError(f"Build detector with cargo build --release --manifest-path {ROOT / 'src/otsu/Cargo.toml'}")
         sweep_dir = out / "train_sweep"
@@ -151,7 +154,9 @@ def run_job(job: dict) -> dict:
         if name.startswith("test_"):
             pred = predict(winner["config"], name, name)
             metrics[name[5:]] = evaluate_coco(coco, pred)
-    result = dict(job_id=job["job_id"], method=method, selected_config=selection,
+    result = dict(job_id=job["job_id"], method=method, stage=job.get("stage"),
+                  condition=job.get("condition"), annotation_sha256=sha256_file(job.get("ann")),
+                  selected_config=selection,
                   candidates=candidates, validation=winner["validation"], tests=metrics,
                   paths={"selection": str(out / "selected_config.json"), "candidates": str(out / "candidates.json"),
                          "manifest": str(job["manifest"]), "manifest_sha256": sha256_file(job["manifest"]),
