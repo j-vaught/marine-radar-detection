@@ -6,7 +6,7 @@ authors = [
     {name = "J.C. Vaught", email = "jvaught@sc.edu"},
     {name = "Ty Dangerfield"},
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.12"
 
 dependencies = [
     # Core
@@ -22,14 +22,14 @@ dependencies = [
     "PyWavelets>=1.4",
 
     # Deep learning
-    "torch>=2.1",
-    "torchvision>=0.16",
-    "ultralytics>=8.3",
+    "torch==2.5.1",
+    "torchvision==0.20.1",
+    "ultralytics==8.4.14",
     "sahi>=0.11",
     "transformers>=4.36",
 
     # Evaluation
-    "pycocotools>=2.0",
+    "pycocotools==2.0.11",
     "tidecv>=1.0",
 
     # Visualization
@@ -41,13 +41,21 @@ dependencies = [
     "thop",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-    "jupyter",
-    "ipykernel",
-    "black",
-    "ruff",
+    "pytest==9.2.0",
+    "ruff==0.17.5",
+    "ty==0.0.104",
 ]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu121", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" }]
+torchvision = [{ index = "pytorch-cu121", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
 
 [tool.ruff]
 line-length = 100
