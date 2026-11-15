@@ -108,8 +108,8 @@ def public_value(value):
             key: public_value(item)
             for key, item in value.items()
             if key.lower() not in DROP_KEYS | SENSITIVE_KEYS
-            and not any(
-                token in key.lower() for token in ("password", "credential", "secret", "token")
+            and not key.lower().endswith(
+                ("_password", "_credential", "_secret", "_token", "_api_key")
             )
         }
     if isinstance(value, list):

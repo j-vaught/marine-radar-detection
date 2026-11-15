@@ -144,3 +144,9 @@ def test_archive_job_symlink_is_rejected(tmp_path):
     (archive / "job").symlink_to(original.parent, target_is_directory=True)
     with pytest.raises(ValueError, match="Symlink"):
         checked_file(archive / "job" / "1", "metrics.json", ledger)
+
+
+def test_package_names_are_not_mistaken_for_credentials():
+    assert public_value({"tokenizers": "0.22.2", "access_token": "opaque"}) == {
+        "tokenizers": "0.22.2"
+    }
