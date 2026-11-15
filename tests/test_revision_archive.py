@@ -153,3 +153,26 @@ def test_failed_archive_is_not_ledgered(tmp_path, monkeypatch):
         archive.process_record("job", "1", record, "target", "/root", ledger, path)
     assert ledger["verified"] == {}
     assert not path.exists()
+
+
+def test_remote_inventory_under_python311(tmp_path):
+    import shutil
+
+    python = shutil.which("python3.11")
+    if not python:
+        pytest.skip("Python 3.11 is unavailable")
+    (tmp_path / "result.json").write_text("{}")
+    completed = subprocess.run(
+        [python, "-c", archive.REMOTE, "inventory", str(tmp_path)],
+        input=b"",
+        capture_output=True,
+        check=True,
+    )
+    assert list(json.loads(completed.stdout)) == ["result.json"]
+
+
+def test_remote_errors_do_not_log_encoded_commands():
+    exc = subprocess.CalledProcessError(
+        1, ["ssh", "encoded-secret-command"], stderr=b"remote error"
+    )
+    assert archive.error_message(exc) == "Remote command failed (exit 1): remote error"

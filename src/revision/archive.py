@@ -26,7 +26,7 @@ SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
 
 # The same implementation runs on each remote host. It accepts only regular files,
 # never follows links, hashes contents in bounded chunks, and streams a tar archive.
-REMOTE = r'''
+REMOTE = r"""
 import hashlib, json, os, pathlib, shutil, stat, sys, tarfile
 from datetime import datetime, timezone
 
@@ -89,61 +89,6 @@ def inventory(root):
         out[rel] = {'sha256': h.hexdigest(), 'size': path.stat().st_size}
     return out
 
-def archive_identity(job: str, attempt: str, record: dict, dest_host: str, root: str) -> str:
-    """Bind a verified archive to the immutable completion and both endpoints."""
-    value = {
-        "job": job,
-        "attempt": attempt,
-        "source_host": record["host"],
-        "source_out": record["out"],
-        "nonce": record.get("nonce"),
-        "result": record["result"],
-        "destination_host": dest_host,
-        "destination_root": root,
-    }
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def load_ledger(path: Path) -> dict:
-    if not path.exists():
-        return {"version": 1, "verified": {}}
-    value = json.loads(path.read_text())
-    if value.get("version") != 1 or not isinstance(value.get("verified"), dict):
-        raise ValueError(f"Invalid archive ledger: {path}")
-    return value
-
-
-def save_ledger(path: Path, ledger: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + f".{os.getpid()}.{uuid.uuid4().hex}.tmp")
-    try:
-        with tmp.open("x") as f:
-            json.dump(ledger, f, sort_keys=True, indent=2)
-            f.write("\n")
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, path)
-    finally:
-        tmp.unlink(missing_ok=True)
-
-
-def process_record(job, attempt, record, dest_host, root, ledger, ledger_path, force=False):
-    identity = archive_identity(job, attempt, record, dest_host, root)
-    if identity in ledger["verified"]:
-        if not force:
-            return "already verified"
-        verified = dict(ledger["verified"])
-        del verified[identity]
-        save_ledger(ledger_path, {**ledger, "verified": verified})
-        ledger["verified"] = verified
-    result = archive_one(job, attempt, record, dest_host, root)
-    updated = {**ledger, "verified": {**ledger["verified"], identity: {"job": job, "attempt": attempt}}}
-    save_ledger(ledger_path, updated)
-    ledger["verified"] = updated["verified"]
-    return result
-
-
 def main():
     mode = sys.argv[1]
     if mode == 'inventory':
@@ -195,7 +140,7 @@ def main():
     else:
         raise ValueError('unknown mode')
 main()
-'''
+"""
 
 
 def remote_cmd(mode: str, *args: str) -> str:
@@ -360,6 +305,17 @@ def process_record(job, attempt, record, dest_host, root, ledger, ledger_path, f
     return result
 
 
+def error_message(exc: Exception) -> str:
+    if isinstance(exc, subprocess.CalledProcessError):
+        detail = exc.stderr
+        if isinstance(detail, bytes):
+            detail = detail.decode(errors="replace")
+        return f"Remote command failed (exit {exc.returncode}): {(detail or '').strip()}"
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return f"Remote command timed out after {exc.timeout} seconds"
+    return str(exc)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state", type=Path, required=True)
@@ -405,7 +361,7 @@ def main():
                 except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
                     if trial + 1 == args.retries:
                         errors += 1
-                        print(f"{job}/{attempt}: {exc}", file=sys.stderr, flush=True)
+                        print(f"{job}/{attempt}: {error_message(exc)}", file=sys.stderr, flush=True)
                     else:
                         time.sleep(min(2**trial, 10))
         if not args.watch:
