@@ -55,3 +55,8 @@ Default matrix outputs go under `results/wavelet/`.
 ## Cleanup note
 
 The older Python implementation was removed once the native crate existed, so this folder now only contains Rust/CUDA source plus crate metadata.
+
+The response mean and population standard deviation at each level use pixels
+inside the circle whose original input value is nonzero. Both backends apply a
+minimum standard deviation of `1e-6` before forming the threshold. Pixels outside
+that region receive zero in both output maps.

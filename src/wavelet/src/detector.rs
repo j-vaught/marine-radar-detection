@@ -86,6 +86,10 @@ pub fn preprocess(
         return Err(anyhow!("image pixel buffer has invalid size"));
     }
 
+    if circle_mask.values().len() != image.pixels.len() {
+        return Err(anyhow!("circle mask size does not match image size"));
+    }
+
     let (binary_mask, score_map) = match backend {
         Backend::Cpu => preprocess_wavelet_cpu(image, circle_mask, config)?,
         Backend::Cuda => cuda::detect_mask_and_scores(image, circle_mask, config)?,
@@ -289,6 +293,7 @@ fn preprocess_wavelet_cpu(
             &hl,
             &hh,
             circle_mask.values(),
+            &image.pixels,
             width,
             height,
             padded_width,
@@ -342,6 +347,7 @@ fn response_stats(
     hl: &[f32],
     hh: &[f32],
     circle_mask: &[u8],
+    image: &[u8],
     width: usize,
     height: usize,
     padded_width: usize,
@@ -354,7 +360,7 @@ fn response_stats(
         let src_row = y * width;
         for x in 0..width {
             let src_idx = src_row + x;
-            if circle_mask[src_idx] == 0 {
+            if circle_mask[src_idx] == 0 || image[src_idx] == 0 {
                 continue;
             }
             let idx = row + x;
@@ -526,4 +532,22 @@ fn ellipse_offsets(size: usize) -> Vec<(isize, isize)> {
         }
     }
     offsets
+}
+
+#[cfg(test)]
+mod tests {
+    use super::response_stats;
+
+    #[test]
+    fn stats_include_only_nonzero_pixels_in_circle() {
+        let lh = [2.0, 100.0, 6.0, 200.0];
+        let zeros = [0.0; 4];
+        let (mean, stddev) =
+            response_stats(&lh, &zeros, &zeros, &[1, 1, 1, 0], &[1, 0, 1, 1], 4, 1, 4);
+        assert_eq!((mean, stddev), (4.0, 2.0));
+        assert_eq!(
+            response_stats(&lh, &zeros, &zeros, &[1; 4], &[0; 4], 4, 1, 4),
+            (0.0, 0.0)
+        );
+    }
 }

@@ -231,7 +231,9 @@ __global__ void compute_threshold_kernel(
     }
     const double mean = *sum / static_cast<double>(count_value);
     const double variance = fmax((*sq_sum / static_cast<double>(count_value)) - mean * mean, 0.0);
-    *threshold_out = static_cast<float>(mean + static_cast<double>(sigma) * sqrt(variance));
+    const float mean_f = static_cast<float>(mean);
+    const float stddev = fmaxf(static_cast<float>(sqrt(variance)), 1.0e-6f);
+    *threshold_out = mean_f + sigma * stddev;
 }
 
 __global__ void update_score_accum_kernel(
@@ -246,24 +248,17 @@ __global__ void update_score_accum_kernel(
     const float* threshold,
     float* score_accum
 ) {
-    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     const int total = width * height;
-    if (idx >= total) {
-        return;
-    }
-
     const float thr = *threshold;
-    if (thr <= 0.0f || circle_mask[idx] == 0 || image[idx] == 0) {
-        return;
-    }
-
-    const int y = idx / width;
-    const int x = idx - y * width;
-    const int padded_idx = y * padded_width + x;
-    const float response = band_response(lh[padded_idx], hl[padded_idx], hh[padded_idx]);
-    const float ratio = response / thr;
-    if (ratio > score_accum[idx]) {
-        score_accum[idx] = ratio;
+    if (thr <= 0.0f) return;
+    for (int idx = blockIdx.x * blockDim.x + threadIdx.x; idx < total; idx += blockDim.x * gridDim.x) {
+        if (circle_mask[idx] == 0 || image[idx] == 0) continue;
+        const int y = idx / width;
+        const int x = idx - y * width;
+        const int padded_idx = y * padded_width + x;
+        const float response = band_response(lh[padded_idx], hl[padded_idx], hh[padded_idx]);
+        const float ratio = response / thr;
+        if (ratio > score_accum[idx]) score_accum[idx] = ratio;
     }
 }
 
@@ -275,21 +270,17 @@ __global__ void finalize_outputs_kernel(
     uint8_t* binary_out,
     uint8_t* score_out
 ) {
-    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= total) {
-        return;
+    for (int idx = blockIdx.x * blockDim.x + threadIdx.x; idx < total; idx += blockDim.x * gridDim.x) {
+        if (circle_mask[idx] == 0 || image[idx] == 0) {
+            binary_out[idx] = 0;
+            score_out[idx] = 0;
+            continue;
+        }
+        const float value = score_accum[idx];
+        binary_out[idx] = (value > 1.0f) ? 1 : 0;
+        const float scaled = (fminf(value, kScoreClamp) / kScoreClamp) * 255.0f;
+        score_out[idx] = static_cast<uint8_t>(floorf(scaled + 0.5f));
     }
-
-    if (circle_mask[idx] == 0 || image[idx] == 0) {
-        binary_out[idx] = 0;
-        score_out[idx] = 0;
-        return;
-    }
-
-    const float value = score_accum[idx];
-    binary_out[idx] = (value > 1.0f) ? 1 : 0;
-    const float scaled = fminf(value, kScoreClamp) * (255.0f / kScoreClamp);
-    score_out[idx] = static_cast<uint8_t>(lrintf(scaled));
 }
 
 inline int check_cuda(cudaError_t status) {
