@@ -1,0 +1,58 @@
+{
+  "name": "DAAN RT-DETR paired source-only bias warmup diagnostic",
+  "objective": "Compare only bias warmup learning rate on the same GPU and source training subset. This is an in-sample optimization diagnostic, not a transfer evaluation.",
+  "design": {
+    "seeds": [
+      0,
+      1
+    ],
+    "warmup_bias_lr": [
+      0.1,
+      0.0
+    ],
+    "fits": 4,
+    "source": "DAAN",
+    "subset": "Exact first 32 DAAN training frames used in diagnostic-rtdetr-DAAN-s0, overfit=True; train and score on these same frames. Freeze ordered IDs and hash labels and images before runs.",
+    "split_manifest_sha256": "03b7d1d48e5faac7872a04f8fb23580a748ca1521539e99b0e54bf45c7d8f4aa",
+    "eval_targets": [],
+    "device": "Same physical GPU on COCESR 1034, RTX A5000 preferred, identical software and backend flags; record GPU UUID and versions.",
+    "initialization": "Pretrained RT-DETR-L, one-class train model restored from identical serialized post-construction state for all four fits. Confirm identical per-tensor digest immediately before first update; verify optimizer parameter groups.",
+    "pretrained_checkpoint_sha256": "6de60b10d4bc566f00cda0f5b4d64afe4b66d48dc9695d2171effb7859d8e73f",
+    "paired_randomness": "For each seed, same data order, augmentations and RNG/backend settings across arms; save ordered frame batches and comparable RNG evidence. Seeds 0 and 1 characterize data-order/randomness conditional on fixed initialized state."
+  },
+  "training": {
+    "recipe": "Use corrected RT-DETR DAAN overfit worker and resolved job settings, explicitly differing only in warmup_bias_lr between arms.",
+    "epochs_schedule": 100,
+    "maximum_executed_epochs": 42,
+    "early_stopping": "Disable equally across all arms to guarantee 42 completed epochs. Stop explicitly after epoch 42; do not set epochs=42 because it changes cosine schedule. Abort on nonfinite values or hardware/runtime failure and retain evidence.",
+    "batch": 4,
+    "imgsz": 1024,
+    "optimizer": "AdamW",
+    "lr0": 0.0001,
+    "weight_decay": 0.0001,
+    "warmup_epochs": 2,
+    "cos_lr": true,
+    "amp": true,
+    "flipud": 0.5,
+    "fliplr": 0.5,
+    "mosaic": 0.0,
+    "other_parameters": "Use and record fully resolved worker defaults, package and backend versions, gradient accumulation, normalization, precision, and optimizer groups. Preflight must compare full resolved arguments with sole intended training difference warmup_bias_lr."
+  },
+  "measurement": {
+    "common_evaluation": "Same fixed subset and evaluation at the end of every epoch including epoch 42; framework AP50 and AP50:95. Save raw per-epoch metrics; no threshold or hyperparameter tuning.",
+    "capture": [
+      "per-step actual group learning rates and optimizer step indices, including initial bias rate and warmup duration",
+      "per-batch and epoch losses; nonfinite values or any termination failure",
+      "initial state tensor digests, pretrained weight digest, data/image/label/order digest, RNG seed",
+      "GPU UUID and model, runtime versions and exact resolved settings",
+      "checkpoints at epoch 42 and logs, times, exit codes"
+    ],
+    "analysis": "For each seed, report paired differences at epoch 42 and trajectories; disclose failures and report both arms and both seeds. Two seeds are descriptive; this cannot isolate historical initialization or support cross-site generalization claims."
+  },
+  "historical_context": {
+    "prior_failure": "COCESR 1034 diagnostic-rtdetr-DAAN-s0/1, A5000; epoch 42 AP50 and AP50:95 zero with finite losses.",
+    "prior_corrected": "COMECH 2422 diagnostic-rtdetr-DAAN-s0/2, RTX 6000 Ada; epoch 42 AP50 86.65%, AP50:95 76.17%. Hardware changed, confounding prior contrast.",
+    "baseline_path": "work/darc-v2/data-wt/src/revision/ultralytics_models.py",
+    "reference_jobs": "work/darc-v2/data-wt/experiments/review-2026-11/jobs.json"
+  }
+}
