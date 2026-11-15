@@ -226,3 +226,69 @@ def test_same_host_selects_local_copy(monkeypatch):
         == "archived"
     )
     assert len(calls) == 2
+
+
+def test_direct_transport_streams_source_to_destination(tmp_path, monkeypatch):
+    import shlex
+
+    from src.revision import archive_transport
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "weights.pt").write_bytes(bytes(range(256)) * 16384)
+    stage = tmp_path / "stage"
+    popen = subprocess.Popen
+
+    def local_ssh(args, **kwargs):
+        return popen(shlex.split(args[-1]) if args[0] == "ssh" else args, **kwargs)
+
+    monkeypatch.setattr(archive_transport.subprocess, "Popen", local_ssh)
+    monkeypatch.setattr(archive_transport, "ssh_options", lambda host: [])
+    config = {"destination_bind": "127.0.0.1", "sources": {"comech-2422": "127.0.0.1"}}
+    metrics = archive_transport.direct_copy(
+        "comech-2422", str(source), "comech-2080", str(stage), config, archive.REMOTE
+    )
+    assert metrics["transport"] == "direct_tls"
+    assert metrics["bytes"] >= 4 * 1024 * 1024
+    assert json.loads(remote("inventory", source).stdout) == json.loads(
+        remote("inventory", stage).stdout
+    )
+
+
+def test_direct_transport_config_rejects_unapproved_hosts(tmp_path):
+    from src.revision.archive_transport import load_config
+
+    config = tmp_path / "transport.json"
+    config.write_text(
+        json.dumps({"destination_bind": "10.1.1.1", "sources": {"unknown": "10.1.1.2"}})
+    )
+    with pytest.raises(ValueError, match="unapproved"):
+        load_config(config)
+
+
+def test_direct_failure_falls_back_to_fresh_relay_stage(monkeypatch):
+    calls = []
+    monkeypatch.setattr(archive, "ssh", lambda *args, **kwargs: '{"file":{"size":1,"sha256":"x"}}')
+    monkeypatch.setattr(archive, "remote_input", lambda *args: "no")
+
+    def fail(host, source, destination, stage, config, program):
+        calls.append(stage)
+        raise OSError("failed")
+
+    monkeypatch.setattr(archive, "direct_copy", fail)
+    monkeypatch.setattr(
+        archive, "stream_copy", lambda host, source, destination, stage: calls.append(stage)
+    )
+    metrics = {}
+    config = {"sources": {"comech-2422": "10.0.0.2"}}
+    result = archive.archive_one(
+        "job",
+        "1",
+        {"host": "comech-2422", "out": "/run"},
+        "comech-2080",
+        "/archive",
+        config,
+        metrics,
+    )
+    assert result == "archived" and metrics["transport"] == "relay"
+    assert len(calls) == 2 and calls[0] != calls[1]

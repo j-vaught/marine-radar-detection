@@ -19,6 +19,7 @@ import time
 import uuid
 from pathlib import Path
 
+from .archive_transport import direct_copy, load_config
 from .fleet import quote_cmd, ssh, ssh_options
 
 DEFAULT_ROOT = "/mnt/12TB_Drive/dspire/atlantis-master/JACKIE_drone_training/wacv-signal-2027-paper-06/revision/archive"
@@ -236,7 +237,15 @@ def stream_copy(host: str, source: str, dest_host: str, staging: str):
             )
 
 
-def archive_one(job: str, attempt: str, record: dict, dest_host: str, root: str):
+def archive_one(
+    job: str,
+    attempt: str,
+    record: dict,
+    dest_host: str,
+    root: str,
+    transport_config=None,
+    transport_metrics=None,
+):
     safe_id(job)
     if not attempt.isdigit() or int(attempt) < 1:
         raise ValueError("Invalid attempt")
@@ -251,10 +260,35 @@ def archive_one(job: str, attempt: str, record: dict, dest_host: str, root: str)
     existing = remote_input(dest_host, remote_cmd("check", final), manifest) == "yes"
     if not existing:
         if record["host"].lower() == dest_host.lower():
+            started = time.monotonic()
             ssh(dest_host, remote_cmd("localcopy", record["out"], staging), timeout=86400)
+            if transport_metrics is not None:
+                transport_metrics.update(
+                    {"transport": "local", "seconds": time.monotonic() - started}
+                )
         else:
-            stream_copy(record["host"], record["out"], dest_host, staging)
+            metrics = None
+            if transport_config and record["host"] in transport_config["sources"]:
+                try:
+                    metrics = direct_copy(
+                        record["host"], record["out"], dest_host, staging, transport_config, REMOTE
+                    )
+                except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+                    print(
+                        f"{job}/{attempt}: direct transfer failed, using relay: {error_message(exc)}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    staging = f"{root}/.staging/{job}/{attempt}-{uuid.uuid4().hex}"
+            if metrics is None:
+                started = time.monotonic()
+                stream_copy(record["host"], record["out"], dest_host, staging)
+                metrics = {"transport": "relay", "seconds": time.monotonic() - started}
+            if transport_metrics is not None:
+                transport_metrics.update(metrics)
     remote_input(dest_host, remote_cmd("finalize", root, job, attempt, staging), manifest)
+    if existing and transport_metrics is not None:
+        transport_metrics["transport"] = "previously_archived"
     return "verified" if existing else "archived"
 
 
@@ -297,7 +331,9 @@ def save_ledger(path: Path, ledger: dict) -> None:
         tmp.unlink(missing_ok=True)
 
 
-def process_record(job, attempt, record, dest_host, root, ledger, ledger_path, force=False):
+def process_record(
+    job, attempt, record, dest_host, root, ledger, ledger_path, force=False, transport_config=None
+):
     identity = archive_identity(job, attempt, record, dest_host, root)
     if identity in ledger["verified"]:
         if not force:
@@ -306,10 +342,14 @@ def process_record(job, attempt, record, dest_host, root, ledger, ledger_path, f
         del verified[identity]
         save_ledger(ledger_path, {**ledger, "verified": verified})
         ledger["verified"] = verified
-    result = archive_one(job, attempt, record, dest_host, root)
+    metrics = {}
+    if transport_config:
+        result = archive_one(job, attempt, record, dest_host, root, transport_config, metrics)
+    else:
+        result = archive_one(job, attempt, record, dest_host, root)
     updated = {
         **ledger,
-        "verified": {**ledger["verified"], identity: {"job": job, "attempt": attempt}},
+        "verified": {**ledger["verified"], identity: {"job": job, "attempt": attempt, **metrics}},
     }
     save_ledger(ledger_path, updated)
     ledger["verified"] = updated["verified"]
@@ -342,6 +382,9 @@ def main():
         action="store_true",
         help="Force a full source and destination checksum audit",
     )
+    parser.add_argument(
+        "--transport-config", type=Path, help="Opt in to configured direct TLS transfers"
+    )
     parser.add_argument("--watch", action="store_true")
     parser.add_argument("--poll", type=int, default=60)
     parser.add_argument("--retries", type=int, default=3)
@@ -352,6 +395,7 @@ def main():
     if ledger_path.resolve().is_relative_to(args.state.resolve()):
         parser.error("ledger must be outside the controller state directory")
     ledger = load_ledger(ledger_path)
+    transport_config = load_config(args.transport_config) if args.transport_config else None
     while True:
         errors = 0
         for job, attempt, record in selected_records(args.state):
@@ -366,6 +410,7 @@ def main():
                         ledger,
                         ledger_path,
                         args.verify_existing,
+                        transport_config,
                     )
                     print(f"{job}/{attempt}: {result}", flush=True)
                     break
