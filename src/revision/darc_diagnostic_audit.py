@@ -6,14 +6,24 @@ import argparse
 import hashlib
 import json
 import math
+import platform
 import re
 from collections import Counter, defaultdict
+from importlib.metadata import version
 from pathlib import Path
 from statistics import median
 
 from . import archive, evaluation, fleet, protocol
 from .darc_fleet import ALLOWED, ARMS, GPU_MODEL, REQUIRED_CHECKS, SOURCES
-from .darc_summary import Receipt, _fit_plan, _fit_schedule, _runtime_signature, _successful_state
+from .darc_summary import (
+    Receipt,
+    _fit_plan,
+    _fit_schedule,
+    _memory_evidence,
+    _runtime_signature,
+    _successful_state,
+    _verify_memory_block,
+)
 from .summarize import _digest_json
 
 UPDATES, INTERVAL, BATCH_SIZE = 32, 16, 2
@@ -456,11 +466,8 @@ def check_predictions(
     reported = metrics["source_validation"]
     require(
         winner == threshold
-        and scores[winner].keys() == reported.keys()
-        and all(
-            finite(reported[key]) and math.isclose(value, reported[key], rel_tol=0, abs_tol=1e-9)
-            for key, value in scores[winner].items()
-        ),
+        and scores[winner] == reported
+        and all(finite(value) for value in reported.values()),
         f"{job_id}: source-only threshold replay differs",
     )
     return len(raw), len(filtered)
@@ -746,10 +753,12 @@ def validate_attempt(
         "source_validation_updates": [row["update"] for row in history],
         "source_validation_raw_predictions": n_raw,
         "source_validation_operating_predictions": n_filtered,
+        "source_validation_metrics_replayed_exactly": True,
         "initial_state_sha256": job["initial_state_sha256"],
         "initial_tensor_sha256": job["initial_tensor_sha256"],
         "metrics_sha256": fit.completion["metrics_sha256"],
         "best_weights_sha256": checkpoint,
+        **_memory_evidence(fit, runtime),
         **scale,
     }, (signature, _digest_json(resolved["initial_architecture"]))
 
@@ -851,6 +860,10 @@ def audit(args: argparse.Namespace) -> dict:
         len({row["best_weights_sha256"] for row in rows}) == len(rows),
         "Different diagnostics share a selected checkpoint digest",
     )
+    memory_blocks = {
+        source: _verify_memory_block((source, 0), [row for row in rows if row["source"] == source])
+        for source in SOURCES
+    }
 
     roots = {"metadata": args.metadata.resolve(), "state": args.state.resolve()}
     attempts = [
@@ -858,8 +871,12 @@ def audit(args: argparse.Namespace) -> dict:
         for p in evidence.entries
         if p.is_relative_to(roots["metadata"]) or p.is_relative_to(roots["state"])
     ]
-    evidence.file(Path(__file__))
-    common = [args.jobs, args.runtime_profile, args.release_evidence, Path(__file__)]
+    audit_source = Path(__file__)
+    audit_helpers = audit_source.with_name("darc_summary.py")
+    evaluator = audit_source.with_name("evaluation.py")
+    for path in (audit_source, audit_helpers, evaluator):
+        evidence.file(path)
+    common = [args.jobs, args.runtime_profile, args.release_evidence, audit_source, audit_helpers]
     canonical = [
         args.data_build_summary,
         args.thread_parity,
@@ -883,17 +900,20 @@ def audit(args: argparse.Namespace) -> dict:
             in {"history.json", "completion.json", "val_raw_predictions.json", "worker.log"}
         ],
         "source_only_selection": [
-            p
-            for p in attempts
-            if p.name
-            in {
-                "history.json",
-                "validation_gt.json",
-                "validation_input_audit.json",
-                "postprocessing_selection.json",
-                "val_raw_predictions.json",
-                "val_predictions.json",
-            }
+            evaluator,
+            *[
+                p
+                for p in attempts
+                if p.name
+                in {
+                    "history.json",
+                    "validation_gt.json",
+                    "validation_input_audit.json",
+                    "postprocessing_selection.json",
+                    "val_raw_predictions.json",
+                    "val_predictions.json",
+                }
+            ],
         ],
         "runtime_precision": [
             args.thread_parity,
@@ -914,6 +934,17 @@ def audit(args: argparse.Namespace) -> dict:
         "diagnostic_job_ids": [row["job_id"] for row in rows],
         "diagnostic_metrics_sha256": {row["job_id"]: row["metrics_sha256"] for row in rows},
         "target_scores_read": 0,
+        "source_replay_environment": {
+            "python": platform.python_version(),
+            "numpy": version("numpy"),
+            "pycocotools": version("pycocotools"),
+        },
+        "gpu_memory_sanity_by_source": memory_blocks,
+        "gpu_memory_sanity_policy": (
+            "GPU model, compute capability and runtime remain exact pairing fields. Allocatable "
+            "capacity is checked for 45–49 GiB, at most 1% within-block spread relative to the "
+            "minimum, and peak allocation below the minimum capacity."
+        ),
         "gradient_provenance": "The immutable trainer fails on any missing or nonfinite gradient before each optimizer call. This audit verifies success, the call budget and the persisted finite loss trace.",
         "diagnostics": rows,
         "checks": {

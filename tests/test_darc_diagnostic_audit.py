@@ -180,6 +180,18 @@ def test_source_validation_replays_threshold_and_rejects_foreign_or_invalid_pred
     )
     with pytest.raises(ValueError, match="threshold replay differs"):
         replay()
+    metrics["score_threshold"] = 0.05
+    metrics["source_validation"]["ap"] -= 1e-12
+    write(
+        tmp_path / "postprocessing_selection.json",
+        {
+            "selection_split": "source_validation",
+            "score_threshold": 0.05,
+            "metrics": metrics["source_validation"],
+        },
+    )
+    with pytest.raises(ValueError, match="threshold replay differs"):
+        replay()
 
 
 def test_geometry_detects_label_loss_and_area_tampering():
