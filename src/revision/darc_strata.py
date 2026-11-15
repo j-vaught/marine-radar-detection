@@ -324,7 +324,7 @@ def paired_rows(rows: list[dict], spec: dict) -> list[dict]:
 
 def verified_predictions(
     receipt, target: str, reference: dict, ledger: Path
-) -> tuple[list[dict], str]:
+) -> tuple[list[dict], str, dict]:
     metrics = json.loads(receipt.metrics_bytes)
     record = metrics["tests"][target]
     if (
@@ -343,7 +343,29 @@ def verified_predictions(
     stored = inventory[path.relative_to(receipt.folder).as_posix()]
     if not proof["verified"] or stored["sha256"] != digest or stored["size"] != path.stat().st_size:
         raise ValueError("Verified archive inventory differs from raw target predictions")
-    return read_json(path), digest
+    return read_json(path), digest, record["center_recall_8px_top30"]
+
+
+def main_center_check(
+    counts: dict, matched_count: int, reference_count: int, scoring: dict
+) -> dict:
+    if (
+        counts["tolerance_px"] != scoring["center_distance_maximum_px"]
+        or counts["max_detections"] != scoring["top_predictions_per_image"]
+        or counts["references"] != reference_count
+        or reference_count <= 0
+        or not 0 <= counts["matched"] <= reference_count
+        or not 0 <= matched_count <= reference_count
+        or counts["recall"] != counts["matched"] / reference_count
+    ):
+        raise ValueError("Archived center metric differs in definition or reference support")
+    return {
+        "references": reference_count,
+        "main_study_matched": counts["matched"],
+        "strata_matched": matched_count,
+        "difference_in_matches": matched_count - counts["matched"],
+        "difference_in_recall": (matched_count - counts["matched"]) / reference_count,
+    }
 
 
 def score_archive(args, spec: dict) -> dict:
@@ -365,7 +387,7 @@ def score_archive(args, spec: dict) -> dict:
     ):
         raise ValueError("Per-object features are not bound to the frozen strata and image audit")
 
-    rows, proofs, support = [], [], {}
+    rows, proofs, center_checks, support = [], [], [], {}
     for source, target in spec["directions"]:
         reference = refs[target]["test"]
         values = features["references"][target]
@@ -386,8 +408,22 @@ def score_archive(args, spec: dict) -> dict:
             for arm in spec["arms"]:
                 job_id = f"darc-v2-fit-{source}-s{seed}-{arm}"
                 fit = receipts[job_id]
-                predictions, digest = verified_predictions(fit, target, reference, ledger)
+                predictions, digest, center_reference = verified_predictions(
+                    fit, target, reference, ledger
+                )
                 matched = match_predictions(reference, predictions, spec["scoring"])
+                center_checks.append(
+                    {
+                        "job_id": job_id,
+                        "target": target,
+                        **main_center_check(
+                            center_reference,
+                            len(matched["center_8px"]),
+                            len(reference["annotations"]),
+                            spec["scoring"],
+                        ),
+                    }
+                )
                 rows.extend(
                     seed_rows(
                         matched,
@@ -416,6 +452,22 @@ def score_archive(args, spec: dict) -> dict:
         "runtime": runtime_identity(),
         "target_support": support,
         "reused_prediction_proofs": proofs,
+        "main_study_center_top30_check": {
+            "all_aggregate_counts_equal": all(
+                row["difference_in_matches"] == 0 for row in center_checks
+            ),
+            "max_absolute_match_difference": max(
+                abs(row["difference_in_matches"]) for row in center_checks
+            ),
+            "max_absolute_recall_difference": max(
+                abs(row["difference_in_recall"]) for row in center_checks
+            ),
+            "rows": center_checks,
+            "method": (
+                "Both matchers maximize the number of detections assigned to references. "
+                "For strata membership, the matcher then favors the lowest total center distance."
+            ),
+        },
         "recall_by_seed": rows,
         "paired_contrasts": paired_rows(rows, spec),
     }
@@ -437,6 +489,7 @@ def write_results(report: dict, output: Path) -> None:
     def points(value):
         return "NA" if value is None else f"{100 * value:+.2f}"
 
+    crosscheck = report["main_study_center_top30_check"]
     lines = [
         "DARC processed-image error stratification",
         "",
@@ -444,6 +497,10 @@ def write_results(report: dict, output: Path) -> None:
         "Match across the full frame before grouping reference boxes. Positive differences favor the intervention.",
         "The paired columns are percentage points. NA denotes zero reference support.",
         "Negative contrast remains in lt64. Contrast is measured in rendered digital levels.",
+        (
+            f"Main-study center cross-check covered {len(crosscheck['rows'])} runs. Largest absolute "
+            f"recall difference {100 * crosscheck['max_absolute_recall_difference']:.6f} points."
+        ),
         "",
         "Source -> target  criterion   family/bin                            n  contrast             s0      s1      s2    mean      SD",
     ]

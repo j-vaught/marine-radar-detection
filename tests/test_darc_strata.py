@@ -83,6 +83,23 @@ def test_half_open_strata_and_missing_rendered_contrast(spec):
         strata.bin_value(float("nan"), strata.CONTRAST, spec)
 
 
+def test_center_recall_crosscheck_reports_count_difference_and_checks_support(spec):
+    main = {
+        "tolerance_px": 8.0,
+        "max_detections": 30,
+        "references": 4,
+        "matched": 3,
+        "recall": 0.75,
+    }
+    check = strata.main_center_check(main, 3, 4, spec["scoring"])
+    assert check["difference_in_matches"] == check["difference_in_recall"] == 0
+    check = strata.main_center_check(main, 2, 4, spec["scoring"])
+    assert check["difference_in_matches"] == -1
+    assert check["difference_in_recall"] == -0.25
+    with pytest.raises(ValueError, match="reference support"):
+        strata.main_center_check(main, 3, 5, spec["scoring"])
+
+
 def test_stratification_counts_matched_labels_without_rematching_and_zero_support(spec):
     truth = reference([[10, 20, 8, 10], [14, 20, 16, 10]])
     features = [
