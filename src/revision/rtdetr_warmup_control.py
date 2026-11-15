@@ -235,6 +235,10 @@ def observe_optimizer_step(trainer, control_state: dict, execute_original) -> No
     original_step, original_unscale = trainer.optimizer.step, trainer.scaler.unscale_
 
     def observe_step(*step_args, **step_kwargs):
+        if not observed.get("unscaled_gradient_finite", False) or any(
+            observed.get("found_inf", {}).values()
+        ):
+            raise FloatingPointError("optimizer attempted an update with nonfinite gradients")
         observed["executed"] = True
         return original_step(*step_args, **step_kwargs)
 
@@ -249,8 +253,8 @@ def observe_optimizer_step(trainer, control_state: dict, execute_original) -> No
             if trainer.scaler.is_enabled()
             else {}
         )
-        if not trainer.scaler.is_enabled() and not observed["unscaled_gradient_finite"]:
-            raise FloatingPointError("nonfinite unscaled gradient with AMP disabled")
+        if not observed["unscaled_gradient_finite"] and not any(observed["found_inf"].values()):
+            raise FloatingPointError("nonfinite unscaled gradient was not registered by scaler")
         return value
 
     trainer.optimizer.step = observe_step
@@ -465,6 +469,7 @@ def fit(
                 "warmup_bias_lr": bias,
                 "error": f"{type(exc).__name__}: {exc}",
                 "progress": control_state,
+                "last_batch": getattr(getattr(model, "trainer", None), "control_batch", None),
             },
         )
         raise

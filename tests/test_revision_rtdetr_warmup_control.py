@@ -96,3 +96,40 @@ def test_scaler_instrumentation_preserves_native_skip_and_backoff(overflow):
     assert trainer.control_batch["found_inf"] == {"cpu": float(overflow)}
     assert trainer.control_batch["scale_after"] == (4.0 if overflow else 8.0)
     assert trainer.control_batch["unscaled_gradient_finite"] is not overflow
+
+
+def test_scaler_instrumentation_rejects_unregistered_nonfinite_gradient():
+    from types import SimpleNamespace
+
+    from src.revision.rtdetr_warmup_control import observe_optimizer_step
+
+    model = torch.nn.Linear(1, 1)
+    for parameter in model.parameters():
+        parameter.grad = torch.full_like(parameter, float("inf"))
+
+    class Optimizer:
+        def step(self):
+            raise AssertionError("unsafe update must not run")
+
+    class Scaler:
+        def get_scale(self):
+            return 8.0
+
+        def is_enabled(self):
+            return True
+
+        def unscale_(self, optimizer):
+            pass
+
+        def _found_inf_per_device(self, optimizer):
+            return {"cpu": torch.tensor(0.0)}
+
+    trainer = SimpleNamespace(
+        loss=torch.tensor(1.0),
+        control_batch={},
+        model=model,
+        optimizer=Optimizer(),
+        scaler=Scaler(),
+    )
+    with pytest.raises(FloatingPointError, match="not registered"):
+        observe_optimizer_step(trainer, {}, lambda: trainer.scaler.unscale_(trainer.optimizer))
