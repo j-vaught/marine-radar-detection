@@ -84,10 +84,10 @@ def quote_cmd(parts):
     return shlex.join([str(x) for x in parts])
 
 
-def gpu_free(host, config):
+def gpu_free(host, config, *, include_models=False):
     """GPU must have no compute process, irrespective of process ownership."""
     prefix = [config["wrapper"]] if config.get("wrapper") else []
-    inventory = prefix + ["nvidia-smi", "--query-gpu=index,uuid", "--format=csv,noheader,nounits"]
+    inventory = prefix + ["nvidia-smi", "--query-gpu=index,uuid,name", "--format=csv,noheader,nounits"]
     processes = prefix + [
         "nvidia-smi",
         "--query-compute-apps=gpu_uuid,pid",
@@ -102,11 +102,16 @@ def gpu_free(host, config):
     all_gpu, active = (part.strip().splitlines() for part in parts)
     busy = {line.split(",")[0].strip() for line in active if line.strip()}
     allowed = config.get("allowed_gpus")
-    return [
-        (int(index.strip()), gpu_uuid.strip())
-        for index, gpu_uuid in (line.split(",", 1) for line in all_gpu)
-        if gpu_uuid.strip() not in busy and (allowed is None or int(index.strip()) in allowed)
-    ]
+    available = []
+    for line in all_gpu:
+        fields = [field.strip() for field in line.split(",", 2)]
+        if len(fields) < 2:
+            raise ValueError("Malformed GPU inventory")
+        index, gpu_uuid = fields[:2]
+        model = fields[2] if len(fields) == 3 else None
+        if gpu_uuid not in busy and (allowed is None or int(index) in allowed):
+            available.append((int(index), gpu_uuid, model) if include_models else (int(index), gpu_uuid))
+    return available
 
 
 def resolve(value, values):
@@ -351,7 +356,7 @@ except Exception as e: print(json.dumps({'receipt':r,'unknown':str(e)}))
 def prepare_launch(host, cfg, job, attempt, device):
     root, _code = cfg["result_root"], cfg["code_path"]
     out = f"{root}/runs/{job['job_id']}/{attempt}"
-    index, gpu_uuid = device if device is not None else (None, None)
+    index, gpu_uuid = device[:2] if device is not None else (None, None)
     return {
         "state": "launching",
         "host": host,
@@ -482,6 +487,38 @@ def approved_gate_methods(gate, jobs, records, jobs_sha256):
     }
 
 
+def adjacency_matches_core(job, records, state_dir, host, cfg, device):
+    """Fail closed unless the paired completed core used this host, GPU model and thread count."""
+    if not job.get("match_core_gpu_model"):
+        return True
+    if job.get("stage") != "adjacency" or device is None or len(device) < 3 or not device[2]:
+        return False
+    core_id = f"core-{job['method']}-{job['source']}-s{job['seed']}"
+    core = records.get(core_id, {})
+    if core.get("state") != "succeeded":
+        return False
+    training = core
+    if not core.get("result", {}).get("runtime_provenance", {}).get("gpu"):
+        history = state_dir / "history" / f"{core_id}-attempt1.json"
+        try:
+            training = json.loads(history.read_text())
+        except (OSError, ValueError):
+            return False
+    result = training.get("result", {})
+    provenance = result.get("runtime_provenance", {})
+    threads = provenance.get("thread_environment", {})
+    return (
+        training.get("state") == "succeeded"
+        and result.get("job_id") == core_id
+        and result.get("state") == "succeeded"
+        and training.get("host") == host
+        and training.get("python") == cfg.get("venv_python")
+        and provenance.get("gpu", {}).get("model") == device[2]
+        and all(threads.get(key) == str(cfg.get("threads", 4))
+                for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "RAYON_NUM_THREADS"))
+    )
+
+
 def schedule(args):
     state_dir = args.state
     if args.status:
@@ -609,7 +646,7 @@ def schedule(args):
             }
             with ThreadPoolExecutor(max_workers=min(16, max(1, len(eligible)))) as executor:
                 gpu_queries = {
-                    host: executor.submit(gpu_free, host, cfg) for host, cfg in eligible.items()
+                    host: executor.submit(gpu_free, host, cfg, include_models=True) for host, cfg in eligible.items()
                 }
             for host, cfg in eligible.items():
                 try:
@@ -639,6 +676,7 @@ def schedule(args):
                         )
                         == (device is not None)
                         and (not j.get("required_host") or j["required_host"] == host)
+                        and adjacency_matches_core(j, records, state_dir, host, cfg, device)
                         and (
                             j.get("stage") == "diagnostic"
                             or (
@@ -680,7 +718,7 @@ def schedule(args):
                     )
                     if device is not None:
                         try:
-                            if device not in gpu_free(host, cfg):
+                            if device not in gpu_free(host, cfg, include_models=True):
                                 continue
                         except (subprocess.SubprocessError, OSError, ValueError):
                             continue

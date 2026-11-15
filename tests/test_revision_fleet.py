@@ -423,3 +423,28 @@ def test_repair_worker_bypasses_checkpoint_scratch(tmp_path):
         assert fleet.worker(str(job_file), str(tmp_path / "completion.json"), 2) == 0
     run.assert_called_once()
     stage.assert_not_called()
+
+
+def test_adjacency_matches_training_gpu_and_repaired_history(tmp_path):
+    adj = {"method": "yolo", "source": "DAAN", "seed": 0, "stage": "adjacency", "match_core_gpu_model": True}
+    core_id = "core-yolo-DAAN-s0"
+    threads = {k: "4" for k in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "RAYON_NUM_THREADS")}
+    result = {"job_id": core_id, "state": "succeeded", "runtime_provenance": {
+        "gpu": {"model": "NVIDIA RTX A5000"}, "thread_environment": threads}}
+    training = {"state": "succeeded", "host": "parent", "python": "/venv/python", "result": result}
+    cfg = {"venv_python": "/venv/python", "threads": 4}
+    assert fleet.adjacency_matches_core(adj, {core_id: training}, tmp_path, "parent", cfg, (0, "GPU-a", "NVIDIA RTX A5000"))
+    assert not fleet.adjacency_matches_core(adj, {core_id: training}, tmp_path, "parent", cfg, (0, "GPU-a", "RTX 6000"))
+    assert not fleet.adjacency_matches_core(adj, {core_id: training}, tmp_path, "other", cfg, (0, "GPU-a", "NVIDIA RTX A5000"))
+    assert not fleet.adjacency_matches_core(adj, {core_id: {"state": "running"}}, tmp_path, "parent", cfg, (0, "GPU-a", "NVIDIA RTX A5000"))
+    repaired = {"state": "succeeded", "result": {"runtime_provenance": {}}}
+    assert not fleet.adjacency_matches_core(adj, {core_id: repaired}, tmp_path, "parent", cfg, (0, "GPU-a", "NVIDIA RTX A5000"))
+    (tmp_path / "history").mkdir()
+    (tmp_path / "history" / f"{core_id}-attempt1.json").write_text(json.dumps(training))
+    assert fleet.adjacency_matches_core(adj, {core_id: repaired}, tmp_path, "parent", cfg, (0, "GPU-a", "NVIDIA RTX A5000"))
+    assert not fleet.adjacency_matches_core(adj, {core_id: repaired}, tmp_path, "parent", {**cfg, "threads": 2}, (0, "GPU-a", "NVIDIA RTX A5000"))
+
+
+def test_gpu_query_includes_model_when_requested():
+    with patch.object(fleet, "ssh", return_value="0, GPU-a, NVIDIA RTX A5000\n__REVISION_PROCESS_LIST__\n"):
+        assert fleet.gpu_free("host", {}, include_models=True) == [(0, "GPU-a", "NVIDIA RTX A5000")]
