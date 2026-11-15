@@ -426,45 +426,112 @@ def test_repair_worker_bypasses_checkpoint_scratch(tmp_path):
 
 
 def test_adjacency_matches_training_gpu_and_repaired_history(tmp_path):
-    adj = {"method": "yolo", "source": "DAAN", "seed": 0, "stage": "adjacency", "match_core_gpu_model": True}
+    adj = {
+        "method": "yolo",
+        "source": "DAAN",
+        "seed": 0,
+        "stage": "adjacency",
+        "match_core_gpu_model": True,
+    }
     core_id = "core-yolo-DAAN-s0"
     threads = {k: "4" for k in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "RAYON_NUM_THREADS")}
-    result = {"job_id": core_id, "state": "succeeded", "runtime_provenance": {
-        "gpu": {"model": "NVIDIA RTX A5000"}, "thread_environment": threads}}
+    result = {
+        "job_id": core_id,
+        "state": "succeeded",
+        "runtime_provenance": {"gpu": {"model": "NVIDIA RTX A5000"}, "thread_environment": threads},
+    }
     training = {"state": "succeeded", "host": "parent", "python": "/venv/python", "result": result}
     cfg = {"venv_python": "/venv/python", "threads": 4}
-    assert fleet.adjacency_matches_core(adj, {core_id: training}, tmp_path, "parent", cfg, (0, "GPU-a", "NVIDIA RTX A5000"))
-    assert not fleet.adjacency_matches_core(adj, {core_id: training}, tmp_path, "parent", cfg, (0, "GPU-a", "RTX 6000"))
-    assert not fleet.adjacency_matches_core(adj, {core_id: training}, tmp_path, "other", cfg, (0, "GPU-a", "NVIDIA RTX A5000"))
-    assert not fleet.adjacency_matches_core(adj, {core_id: {"state": "running"}}, tmp_path, "parent", cfg, (0, "GPU-a", "NVIDIA RTX A5000"))
+    assert fleet.adjacency_matches_core(
+        adj, {core_id: training}, tmp_path, "parent", cfg, (0, "GPU-a", "NVIDIA RTX A5000")
+    )
+    assert not fleet.adjacency_matches_core(
+        adj, {core_id: training}, tmp_path, "parent", cfg, (0, "GPU-a", "RTX 6000")
+    )
+    assert not fleet.adjacency_matches_core(
+        adj, {core_id: training}, tmp_path, "other", cfg, (0, "GPU-a", "NVIDIA RTX A5000")
+    )
+    assert not fleet.adjacency_matches_core(
+        adj,
+        {core_id: {"state": "running"}},
+        tmp_path,
+        "parent",
+        cfg,
+        (0, "GPU-a", "NVIDIA RTX A5000"),
+    )
     repaired = {"state": "succeeded", "result": {"runtime_provenance": {}}}
-    assert not fleet.adjacency_matches_core(adj, {core_id: repaired}, tmp_path, "parent", cfg, (0, "GPU-a", "NVIDIA RTX A5000"))
+    assert not fleet.adjacency_matches_core(
+        adj, {core_id: repaired}, tmp_path, "parent", cfg, (0, "GPU-a", "NVIDIA RTX A5000")
+    )
     (tmp_path / "history").mkdir()
     (tmp_path / "history" / f"{core_id}-attempt1.json").write_text(json.dumps(training))
-    assert fleet.adjacency_matches_core(adj, {core_id: repaired}, tmp_path, "parent", cfg, (0, "GPU-a", "NVIDIA RTX A5000"))
-    assert not fleet.adjacency_matches_core(adj, {core_id: repaired}, tmp_path, "parent", {**cfg, "threads": 2}, (0, "GPU-a", "NVIDIA RTX A5000"))
+    assert fleet.adjacency_matches_core(
+        adj, {core_id: repaired}, tmp_path, "parent", cfg, (0, "GPU-a", "NVIDIA RTX A5000")
+    )
+    assert not fleet.adjacency_matches_core(
+        adj,
+        {core_id: repaired},
+        tmp_path,
+        "parent",
+        {**cfg, "threads": 2},
+        (0, "GPU-a", "NVIDIA RTX A5000"),
+    )
 
 
 def test_gpu_query_includes_model_when_requested():
-    with patch.object(fleet, "ssh", return_value="0, GPU-a, NVIDIA RTX A5000\n__REVISION_PROCESS_LIST__\n"):
+    with patch.object(
+        fleet, "ssh", return_value="0, GPU-a, NVIDIA RTX A5000\n__REVISION_PROCESS_LIST__\n"
+    ):
         assert fleet.gpu_free("host", {}, include_models=True) == [(0, "GPU-a", "NVIDIA RTX A5000")]
 
 
 def test_adjacency_cross_host_requires_matching_environment_attestations(tmp_path):
-    job = {"method": "yolo", "source": "DAAN", "seed": 0, "stage": "adjacency",
-           "match_core_gpu_model": True, "paired_environment_sha256": "digest"}
+    job = {
+        "method": "yolo",
+        "source": "DAAN",
+        "seed": 0,
+        "stage": "adjacency",
+        "match_core_gpu_model": True,
+        "paired_environment_sha256": "digest",
+    }
     core_id = "core-yolo-DAAN-s0"
     threads = {key: "4" for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "RAYON_NUM_THREADS")}
-    training = {"state": "succeeded", "host": "original", "python": "/original/python",
-        "result": {"job_id": core_id, "state": "succeeded", "runtime_provenance": {
-            "gpu": {"model": "NVIDIA RTX 6000 Ada Generation"}, "thread_environment": threads}}}
+    training = {
+        "state": "succeeded",
+        "host": "original",
+        "python": "/original/python",
+        "result": {
+            "job_id": core_id,
+            "state": "succeeded",
+            "runtime_provenance": {
+                "gpu": {"model": "NVIDIA RTX 6000 Ada Generation"},
+                "thread_environment": threads,
+            },
+        },
+    }
     records = {core_id: training}
     cfg = {"venv_python": "/candidate/python", "threads": 4, "paired_environment_sha256": "digest"}
     device = (0, "GPU-a", "NVIDIA RTX 6000 Ada Generation")
     hosts = {"original": {"paired_environment_sha256": "digest"}, "candidate": cfg}
     assert fleet.adjacency_matches_core(job, records, tmp_path, "candidate", cfg, device, hosts)
-    assert not fleet.adjacency_matches_core(job, records, tmp_path, "candidate", {**cfg, "paired_environment_sha256": "wrong"}, device, hosts)
-    assert not fleet.adjacency_matches_core(job, records, tmp_path, "candidate", cfg, device, {"original": {}})
-    assert not fleet.adjacency_matches_core({**job, "paired_environment_sha256": ""}, records, tmp_path, "candidate", cfg, device, hosts)
-    assert not fleet.adjacency_matches_core(job, records, tmp_path, "candidate", {**cfg, "threads": 2}, device, hosts)
-    assert not fleet.adjacency_matches_core(job, records, tmp_path, "candidate", cfg, (0, "GPU-a", "other"), hosts)
+    assert not fleet.adjacency_matches_core(
+        job,
+        records,
+        tmp_path,
+        "candidate",
+        {**cfg, "paired_environment_sha256": "wrong"},
+        device,
+        hosts,
+    )
+    assert not fleet.adjacency_matches_core(
+        job, records, tmp_path, "candidate", cfg, device, {"original": {}}
+    )
+    assert not fleet.adjacency_matches_core(
+        {**job, "paired_environment_sha256": ""}, records, tmp_path, "candidate", cfg, device, hosts
+    )
+    assert not fleet.adjacency_matches_core(
+        job, records, tmp_path, "candidate", {**cfg, "threads": 2}, device, hosts
+    )
+    assert not fleet.adjacency_matches_core(
+        job, records, tmp_path, "candidate", cfg, (0, "GPU-a", "other"), hosts
+    )

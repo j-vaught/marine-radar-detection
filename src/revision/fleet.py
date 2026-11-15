@@ -87,7 +87,11 @@ def quote_cmd(parts):
 def gpu_free(host, config, *, include_models=False):
     """GPU must have no compute process, irrespective of process ownership."""
     prefix = [config["wrapper"]] if config.get("wrapper") else []
-    inventory = prefix + ["nvidia-smi", "--query-gpu=index,uuid,name", "--format=csv,noheader,nounits"]
+    inventory = prefix + [
+        "nvidia-smi",
+        "--query-gpu=index,uuid,name",
+        "--format=csv,noheader,nounits",
+    ]
     processes = prefix + [
         "nvidia-smi",
         "--query-compute-apps=gpu_uuid,pid",
@@ -110,7 +114,9 @@ def gpu_free(host, config, *, include_models=False):
         index, gpu_uuid = fields[:2]
         model = fields[2] if len(fields) == 3 else None
         if gpu_uuid not in busy and (allowed is None or int(index) in allowed):
-            available.append((int(index), gpu_uuid, model) if include_models else (int(index), gpu_uuid))
+            available.append(
+                (int(index), gpu_uuid, model) if include_models else (int(index), gpu_uuid)
+            )
     return available
 
 
@@ -524,8 +530,10 @@ def adjacency_matches_core(job, records, state_dir, host, cfg, device, hosts=Non
         and result.get("state") == "succeeded"
         and same_environment
         and provenance.get("gpu", {}).get("model") == device[2]
-        and all(threads.get(key) == str(cfg.get("threads", 4))
-                for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "RAYON_NUM_THREADS"))
+        and all(
+            threads.get(key) == str(cfg.get("threads", 4))
+            for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "RAYON_NUM_THREADS")
+        )
     )
 
 
@@ -656,7 +664,8 @@ def schedule(args):
             }
             with ThreadPoolExecutor(max_workers=min(16, max(1, len(eligible)))) as executor:
                 gpu_queries = {
-                    host: executor.submit(gpu_free, host, cfg, include_models=True) for host, cfg in eligible.items()
+                    host: executor.submit(gpu_free, host, cfg, include_models=True)
+                    for host, cfg in eligible.items()
                 }
             for host, cfg in eligible.items():
                 try:
