@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "commit": "ec6d088018ff255e82cfdd629e2a458c0f7d4172",
+  "files": {
+    "ais_anchored_gt.py": {
+      "source_path": "src/data/ais_anchored_gt.py",
+      "git_blob": "a590e6db501f338b223a48d00da47f56e5e181f4",
+      "sha256": "2b784e4e34cc136f0254a707eab82e53f124d29f63b943f29f6fe35f28866c65"
+    },
+    "radar_mask.py": {
+      "source_path": "src/data/radar_mask.py",
+      "git_blob": "0da422ed782e394634196e5b7b954cbaae096416",
+      "sha256": "05b055f9c0ca570cd1c0218d1b581668cda277a4a58c12c33f834a00e09adfd0"
+    },
+    "preprocessing.py": {
+      "source_path": "src/data/preprocessing.py",
+      "git_blob": "1d600500f042120f7fcb4228f35542b933ed8c19",
+      "sha256": "95ffb7e4a444432d34be727b4feaaaa975900e91d921909a0ca6597fb1c7929f"
+    }
+  },
+  "interpretation": "Historical code snapshot for candidate replay. Historical AIS/ground-truth comments are retained verbatim and are not independently verified provenance claims.",
+  "preserved_recipe": "make preprocess-dlr (Makefile lines 60-66); this recipe is not an execution manifest for the released dataset."
+}

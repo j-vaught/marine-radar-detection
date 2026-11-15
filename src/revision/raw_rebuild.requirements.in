@@ -1,0 +1,5 @@
+# Dedicated replay environment; excludes detector/training dependencies.
+numpy==2.2.6
+opencv-python-headless==4.10.0.84
+scikit-learn==1.7.2
+scipy==1.16.3
