@@ -55,7 +55,7 @@ DROP_KEYS = {
     "project",
 }
 ARTIFACT = re.compile(
-    r"(?:[A-Za-z_]+_(?:raw_predictions|predictions|gt)|val_predictions|val_raw_predictions|"
+    r"(?:[A-Za-z_]+_(?:raw_predictions|predictions|raw|operating|gt)|val_predictions|val_raw_predictions|"
     r"history|postprocessing_selection|support_stream|training_audit|subset_ids)\.json\Z"
 )
 METRICS_FIELDS = (

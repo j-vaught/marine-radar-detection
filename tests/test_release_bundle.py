@@ -152,3 +152,19 @@ def test_package_names_are_not_mistaken_for_credentials():
     assert public_value({"tokenizers": "0.22.2", "access_token": "opaque"}) == {
         "tokenizers": "0.22.2"
     }
+
+
+def test_archived_prediction_names_cover_both_native_families():
+    from src.revision.release_bundle import ARTIFACT
+
+    for name in (
+        "DAAN_raw.json",
+        "DARC_operating.json",
+        "validation_raw.json",
+        "MANV_raw_predictions.json",
+        "target_local_raw_predictions.json",
+        "DAAN_gt.json",
+    ):
+        assert ARTIFACT.fullmatch(name)
+    assert not ARTIFACT.fullmatch("runtime.json")
+    assert not ARTIFACT.fullmatch("job.json")
