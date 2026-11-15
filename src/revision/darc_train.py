@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 from typing import Any, cast
 
+import cv2
 import numpy as np
 import torch
 import yaml
@@ -222,7 +223,8 @@ def _validation_loss(model, loader, device, seed):
             for images, targets, _stats in loader:
                 moved_images = [x.to(device) for x in images]
                 moved_targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-                loss = sum(model(moved_images, moved_targets).values())
+                with torch.autocast(device_type=device.type, enabled=False):
+                    loss = sum(model(moved_images, moved_targets).values())
                 if not torch.isfinite(loss):
                     raise RuntimeError("Nonfinite source validation loss")
                 total += float(loss.item()) * len(images)
@@ -243,7 +245,8 @@ def _predictions(model, dataset, device):
     with torch.inference_mode():
         for i in range(len(dataset)):
             image, target, stats = dataset[i]
-            out = model([image.to(device)])[0]
+            with torch.autocast(device_type=device.type, enabled=False):
+                out = model([image.to(device)])[0]
             boxes, scores, labels = out["boxes"].cpu(), out["scores"].cpu(), out["labels"].cpu()
             if not torch.isfinite(boxes).all() or not torch.isfinite(scores).all():
                 raise RuntimeError("Nonfinite detector output")
@@ -369,6 +372,8 @@ def _source_audit(stats, effective_hw):
             for reason in ("baseline", "gate", "rejected")
         },
         "scale_rejections": sum(int(x["scale_rejections"]) for x in stats),
+        "accepted_shrink": sum(scale < 1 for scale in scales),
+        "accepted_grow": sum(scale > 1 for scale in scales),
         "scale_summary": summary(scales),
         "box_area_before_native_px2": summary(before),
         "box_area_after_native_px2": summary(after),
@@ -500,6 +505,10 @@ def run(job):
         "cuda_version": torch.version.cuda,
         "cudnn_version": torch.backends.cudnn.version(),
         "numpy_version": np.__version__,
+        "opencv_version": cv2.__version__,
+        "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
+        "mkl_num_threads": os.environ.get("MKL_NUM_THREADS"),
+        "openblas_num_threads": os.environ.get("OPENBLAS_NUM_THREADS"),
         "python_version": platform.python_version(),
         "workers": workers,
         "torch_threads": torch.get_num_threads(),
@@ -568,10 +577,11 @@ def run(job):
             group["lr"] = _learning_rate(update)
         model.train()
         optimizer.zero_grad(set_to_none=True)
-        losses = model(
-            [x.to(device) for x in images],
-            [{k: v.to(device) for k, v in target.items()} for target in targets],
-        )
+        with torch.autocast(device_type=device.type, enabled=False):
+            losses = model(
+                [x.to(device) for x in images],
+                [{k: v.to(device) for k, v in target.items()} for target in targets],
+            )
         loss = sum(losses.values())
         if not torch.isfinite(loss):
             raise RuntimeError(f"Nonfinite training loss at update {update}")

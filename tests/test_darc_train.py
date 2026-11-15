@@ -307,3 +307,14 @@ def test_decay_occurs_after_exactly_2288_updates():
     assert trainer._learning_rate(2289) == trainer._learning_rate(3432) == 0.00025
     with pytest.raises(ValueError):
         trainer._learning_rate(0)
+
+
+def test_validation_disables_inherited_autocast():
+    class AutocastCheck(torch.nn.Module):
+        def forward(self, images, targets):
+            assert not torch.is_autocast_enabled("cpu")
+            return {"loss": torch.tensor(1.0)}
+
+    loader = [([torch.ones(1)], [{"boxes": torch.zeros((0, 4))}], [{}])]
+    with torch.autocast(device_type="cpu", dtype=torch.bfloat16):
+        assert trainer._validation_loss(AutocastCheck(), loader, torch.device("cpu"), 3) == 1.0
