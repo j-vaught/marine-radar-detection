@@ -418,6 +418,31 @@ def matches(record, obj, job_id):
     )
 
 
+def approved_gate_methods(gate, jobs, records, jobs_sha256):
+    """Validate global gate identity, then return methods whose diagnostics passed."""
+    diagnostics = [job for job in jobs if job.get("stage") == "diagnostic"]
+    if (
+        gate.get("approved") is not True
+        or not diagnostics
+        or gate.get("jobs_sha256") != jobs_sha256
+        or set(gate.get("diagnostic_job_ids", [])) != {job["job_id"] for job in diagnostics}
+    ):
+        return set()
+    if "approved_methods" not in gate:
+        if not all(records.get(job["job_id"], {}).get("state") == "succeeded" for job in diagnostics):
+            return set()
+        return {job["method"] for job in jobs}
+    methods = gate["approved_methods"]
+    if not isinstance(methods, list) or any(not isinstance(method, str) for method in methods):
+        return set()
+    return {
+        method for method in methods
+        if any(job["method"] == method for job in diagnostics)
+        and all(records.get(job["job_id"], {}).get("state") == "succeeded"
+                for job in diagnostics if job["method"] == method)
+    }
+
+
 def schedule(args):
     state_dir = args.state
     if args.status:
@@ -441,7 +466,7 @@ def schedule(args):
         raise ValueError("job IDs must be unique and contain only letters, digits, _, - or .")
     while True:
         hosts = json.loads(args.hosts.read_text())["hosts"]
-        approved = False
+        approved_methods = set()
         records = {}
         pending_status = {}
         for job in jobs:
@@ -505,14 +530,8 @@ def schedule(args):
             records[job["job_id"]] = record
         if args.approval.is_file():
             gate = json.loads(args.approval.read_text())
-            diagnostics = [j["job_id"] for j in jobs if j.get("stage") == "diagnostic"]
-            approved = (
-                gate.get("approved") is True
-                and diagnostics
-                and gate.get("jobs_sha256")
-                == hashlib.sha256(args.manifest.read_bytes()).hexdigest()
-                and set(gate.get("diagnostic_job_ids", [])) == set(diagnostics)
-                and all(records.get(j, {}).get("state") == "succeeded" for j in diagnostics)
+            approved_methods = approved_gate_methods(
+                gate, jobs, records, hashlib.sha256(args.manifest.read_bytes()).hexdigest()
             )
         else:
             gate = {}
@@ -561,7 +580,7 @@ def schedule(args):
                         and (
                             j.get("stage") == "diagnostic"
                             or (
-                                approved
+                                j["method"] in approved_methods
                                 and gate.get("split_sha256") == cfg.get("protocol_sha256")
                                 and gate.get("release_sha") == cfg.get("code_commit")
                             )
@@ -581,7 +600,7 @@ def schedule(args):
                     ]
                     if not candidates:
                         continue
-                    job = candidates[0]
+                    job = min(candidates, key=lambda candidate: candidate.get("stage") != "diagnostic")
                     if device is not None:
                         try:
                             if device not in gpu_free(host, cfg):
@@ -609,7 +628,7 @@ def schedule(args):
             state = records.get(job["job_id"], {}).get("state", "pending")
             counts[state] = counts.get(state, 0) + 1
         print(
-            f"{now()} {json.dumps(counts, sort_keys=True)} gate={'open' if approved else 'closed'}",
+            f"{now()} {json.dumps(counts, sort_keys=True)} approved_methods={sorted(approved_methods)}",
             flush=True,
         )
         if args.once or args.status:
