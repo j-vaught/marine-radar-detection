@@ -1,0 +1,79 @@
+{
+  "protocol_id": "darc-processed-v1",
+  "scope": "Processed-image sensitivity on the released raster and box inventory. Native radar amplitude and physical scale are outside this experiment.",
+  "inputs": {
+    "core_provenance_commit_prefix": "9003db9",
+    "split_sha256": "03b7d1d48e5faac7872a04f8fb23580a748ca1521539e99b0e54bf45c7d8f4aa",
+    "annotations_sha256": "29d602bb9a5d764691e44fe697ba3449348a7e9a9cd05b8c19a415b1fa8d5911",
+    "training_only_pixel_audit_sha256": "672f85c72065be983023ad5714eac181922410f6021ae926b20d108341eb8ce6",
+    "split_kind": "buffered",
+    "dimensions_wh": [1050, 1024],
+    "mask": {"center_xy": [531, 515], "radius_px": 466, "inside": "squared Euclidean distance <= 466^2", "outside_fill": 0},
+    "partitions": {
+      "DAAN": {"train_frames": 456, "train_boxes": 1174, "validation_frames": 114, "test_frames": 114, "test_boxes": 319},
+      "DARC": {"train_frames": 316, "train_boxes": 1020, "validation_frames": 79, "test_frames": 80, "test_boxes": 220},
+      "MANV": {"train_frames": 571, "train_boxes": 2334, "validation_frames": 142, "test_frames": 143, "test_boxes": 572}
+    },
+    "frozen_inventory": "Use the original image IDs, reference boxes, and per-frame image bytes from the split. Keep all test IDs and the full box inventory. Record every input SHA-256 and coordinate mapping. No new frame or object eligibility rules."
+  },
+  "factors": {
+    "intensity": {
+      "I0": "Convert stored 8-bit grayscale B to float32 B/255 inside the fixed mask. Set outside pixels to zero.",
+      "I1": "Inside the mask set low=3. Let high be the NumPy linear empirical 99.5th percentile of the frame's in-mask pixels whose stored uint8 value is >3. If their count is below 256 or high-low is below 16, use I0 and record the fallback. Otherwise compute clip((B-low)/(high-low),0,1) in float64, cast to float32 and zero outside the mask.",
+      "both_levels": "Apply the same intensity rule during training, source validation, and inference before any training jitter. Replicate the masked scalar plane into three channels after any jitter. Preserve the core detector's fixed internal image transform. Per-image quantiles require only that image. No pooled target statistics or target score or label selection.",
+      "audit_basis": "Every source-training raster has mode 3 in its 682157-pixel disc. Whole-disc nonzero q10 to q99.5 degenerates for all MANV training frames. Conditioning on stored values above 3 yields zero training-frame fallbacks across all three sites. Quantiles derive from stored pixel values, independent of the annotation blob_peak field."
+    },
+    "training_spatial_scale_coverage": {
+      "S0": "Return the canonical 1050 by 1024 frame on its original raster. Use the original labels.",
+      "S1": "For each training presentation assign identity probability 0.5. Otherwise draw z uniformly from [-0.5, 0.5) and use isotropic pixel scale s=2^z about the fixed radar-disc center. Warp the image and every xyxy label by the same forward affine. Reject if any transformed box is degenerate, outside the fixed canvas, or if any of its corners lies outside the historical disc. Attempt one redraw with a fresh scale draw after rejection, then fall back to identity. Keep every frame and labeled object.",
+      "draws": "Compute each uniform as the unsigned value of the first 53 bits of SHA-256 of the UTF-8 string darc-processed-v1:zoom:{source}:{seed}:{presentation_index}:{image_id}:{draw_tag}, divided by 2^53. presentation_index starts at zero across the full optimizer run. Tags are gate, scale0 and scale1. Reuse the same draw and rejection decision across I levels.",
+      "affine": "A=[[s,0,(1-s)*531],[0,s,(1-s)*515]]. Use float32 source raster and OpenCV warpAffine with forward matrix, INTER_LINEAR, BORDER_CONSTANT zero and fixed canvas. For s<1 first apply GaussianBlur with automatic kernel dimensions, sigmaX=sigmaY=0.5*sqrt(1/s^2-1), BORDER_CONSTANT zero. Reapply the fixed mask after warp. Scale both continuous endpoints of every xyxy box using A. Keep box extent positive and avoid integer rounding. Skip warping entirely on identity.",
+      "validation_and_test": "No geometric jitter. All score coordinates remain in the common original raster. Export model-effective input sizes, accepted scales, reject and identity counts, and model-input box-area summaries by source before target scoring."
+    }
+  },
+  "fit_policy": {
+    "method": "Faster R-CNN ResNet-50 FPN, matching the verified corrected core architecture and detector postprocessing",
+    "sources": ["DAAN", "DARC", "MANV"],
+    "seeds": [0, 1, 2],
+    "initialization": "Use the verified torchvision pretrained asset and reset the radar head under the seeded core constructor. Save one portable serialized initial state and initial model tensor digest per source and seed. Each arm loads that same state strictly with a fresh optimizer, model-training RNG, and data-order RNG for the same seed.",
+    "hardware": "Prefer RTX 6000 Ada on COMECH 2422. Keep GPU class, runtime, numerical policy, and data path matched across each same-source seed block. Record hardware, package versions, determinism flags, precision, timing, and input and output checksums. Theia, Delta, and DeltaAI excluded.",
+    "precision": "FP32 with TF32 disabled and no autocast or gradient scaler. A nonfinite loss or gradient fails the run. Verify actual optimizer calls.",
+    "batch_size": 2,
+    "optimizer": {"name": "SGD", "momentum": 0.9, "weight_decay": 0.0005},
+    "optimizer_updates": 3432,
+    "updates_per_validation": 286,
+    "lr_first_update": 0.0025,
+    "lr_decay_multiplier": 0.1,
+    "lr_decay_after_update": 2288,
+    "schedule_rationale": "A common 3,432-update budget corresponds to 12 times the batch count of the largest buffered source with batch size two. It fixes learning-rate, validation, data-presentation and optimizer budgets across all treatments and all sources. The revised core used other budgets and precision, so train fresh S0I0 fits.",
+    "fixed_batch_stream": "Shuffle each complete source list by SHA-256 ascending of the UTF-8 string darc-processed-v1:train-order:{source}:{seed}:{cycle}:{image_id}, with zero-based cycles and image-ID tiebreak. Concatenate cycles and group consecutive draws in batches of two, including across cycle boundaries. Stop after exactly 6864 frame presentations. Reuse streams in full-count factorial arms for the same source and seed. Use the same rule on the frozen reduced list for size-control arms.",
+    "checkpoint_selection": "Run all 3432 updates with no early stopping. Evaluate mean source-validation loss at updates 286, 572, 858, 1144, 1430, 1716, 2002, 2288, 2574, 2860, 3146 and 3432 using the corresponding intensity view. Save the checkpoint with lowest source-validation loss, resolving a tie by earliest update. Snapshot and restore training RNG and mutable model buffers across validation. Use one deterministic validation RNG per source, seed and validation index across arms. Compute a source-only operating threshold with the verified core selector after selecting the checkpoint, and keep it fixed for all destination scoring."
+  },
+  "size_control": {
+    "arms": ["DAAN-S0I0-n316", "MANV-S0I0-n316"],
+    "distinct_frames_per_arm": 316,
+    "strata": 12,
+    "selection": "Sort buffered source-training IDs by numeric frame index and then image ID. Partition into 12 contiguous strata with boundaries floor(k*N/12), k=0..12. Set each stratum quota to floor(316*stratum_size/N), then award remaining slots by largest fractional remainder with earlier stratum as tie-break. Within each stratum, choose IDs by ascending SHA-256 of UTF-8 darc-processed-v1:count-subset:{source}:{seed}:{image_id}, then by image ID. Save ordered list and digest. Use the same fixed optimizer budget, model initial state and source validation as the same-source S0I0 baseline.",
+    "interpretation": "The paired full-to-reduced contrast estimates the effect of the chosen distinct-frame count and temporal subset policy at fixed updates. The equal-frame residual also includes differing object count, source content and acquisition."
+  },
+  "job_counts": {
+    "factorial_fit_cells": ["S0I0", "S0I1", "S1I0", "S1I1"],
+    "factorial_fits": 36,
+    "size_control_fits": 6,
+    "total_fits": 42,
+    "common_destination_evaluations": 126
+  },
+  "frozen_analysis": {
+    "common_targets": ["DAAN", "DARC", "MANV"],
+    "metrics": ["AP50", "AP50:95", "AP75", "AR100", "source-selected operating metrics", "one-to-one center recall with 8 pixel tolerance and top 30 ranked proposals"],
+    "primary_contrasts": "On each fixed target, report absolute scores, target-local minus incoming score, within-source paired scale and intensity effects at both levels, and the scale-by-intensity interaction. Emphasize MANV to DARC, DARC to MANV, and DAAN to DARC. Compare reduced to full within each source at S0I0. Report all three seed values and paired mean and sample SD. Keep original score support and show local-reference changes alongside gap changes.",
+    "protocol_boundary": "Target labels enter the frozen evaluator only. The rendered-intensity factor combines removal of the display pedestal and per-image upper-tail scaling. Training scale changes joint return and background geometry. Neither intervention identifies physical calibration, clutter, or sensor gain. The study reuses published destination holdouts."
+  },
+  "pre_score_gates": [
+    "Confirm release bytes match the manifest and equality of label and target hashes in every arm.",
+    "Exercise I0 and I1 on source frames and synthetic arrays, including low-support fallback, pedestal, clipping, finite values and mask handling.",
+    "Exercise identity and both zoom directions, including edge and rejection cases. Audit transformed-box overlays, original object counts, and exact inverse geometry numerically before scoring a target. Confirm meaningful realized source scale and area spread.",
+    "Check same-source seed initial tensor hashes, exact batch/update/validation schedule, source-only scoring for checkpoint and operating selection, and matching runtime backend policies.",
+    "Verify stored predictions, evaluator provenance, unique checkpoint per cell and identical destination IDs before publishing paired effects."
+  ]
+}
