@@ -3,9 +3,7 @@ import pytest
 from src.revision import protocol, score_floor_audit
 
 
-def test_source_guard_excludes_targets_and_checks_manifest_images(
-    tmp_path, monkeypatch
-):
+def test_source_guard_excludes_targets_and_checks_manifest_images(tmp_path, monkeypatch):
     run = tmp_path / "run"
     (run / "fit/weights").mkdir(parents=True)
     images = tmp_path / "images"
