@@ -142,7 +142,8 @@ def _archive(tmp_path):
     }
 
 
-def _fake_score(views, predictions):
+def _fake_score(views, predictions, *, cache_dir=None):
+    del cache_dir
     return {
         name: {
             "clipping": entry[1],
@@ -246,3 +247,56 @@ def test_rejects_verified_worker_metrics_on_wrong_reference(tmp_path):
     with pytest.raises(ValueError, match="differs from frozen target"):
         finalize.finalize(**request)
     assert not (request["output_dir"] / "finalized.json").exists()
+
+
+def test_precompute_scores_only_verified_core_attempts(tmp_path):
+    from src.revision import annotation_sensitivity, evaluation, precompute
+
+    req = _archive(tmp_path)
+    one_run = tmp_path / "partial"
+    one_run.mkdir()
+    job_id = "core-unet-DAAN-s0"
+    (req["runs_dir"] / job_id).rename(one_run / job_id)
+    req["runs_dir"] = one_run
+    holding = one_run / job_id / "1"
+    coco = json.loads(req["annotations"].read_text())
+    manifest = json.loads(req["split_manifest"].read_text())
+    metrics = json.loads((holding / "metrics.json").read_text())
+    for target in SITES:
+        refs = _subset_coco(coco, set(manifest["sites"][target]["partitions"]["test"]))
+        raw = [
+            {key: ann[key] for key in ("image_id", "category_id", "bbox")} | {"score": 0.9}
+            for ann in refs["annotations"]
+        ]
+        protocol.save_json(holding / f"{target}_raw_predictions.json", raw)
+        metrics["tests"][target]["raw"] = evaluation.evaluate_coco(refs, raw)
+    protocol.save_json(holding / "metrics.json", metrics)
+    completion = json.loads((holding / "completion.json").read_text())
+    completion["metrics_sha256"] = protocol.sha256_file(holding / "metrics.json")
+    protocol.save_json(holding / "completion.json", completion)
+
+    cache = tmp_path / "cache"
+    options = {key: value for key, value in req.items() if key != "output_dir"}
+    report = precompute.precompute(**options, cache_dir=cache, workers=2)
+    assert report["core_jobs_ready"] == 1
+    assert report["core_jobs_declared"] == 75
+    assert report["verified_cells"] == 3
+    assert report["cache_hits"] + report["cache_misses"] == 36
+    assert not (cache / "finalized.json").exists()
+    assert not finalize.finalize(**req, cache_dir=cache)
+
+    _, _, env = annotation_sensitivity._load_references(
+        req["annotations"], manifest, "DAAN", "DAAN"
+    )
+    test = _subset_coco(coco, set(manifest["sites"]["DAAN"]["partitions"]["test"]))
+    views = annotation_sensitivity.build_reference_views(test, env["width_height_px"])
+    preds = json.loads((holding / "DAAN_raw_predictions.json").read_text())
+    cached, hits = annotation_sensitivity.score_model_views(views, preds, cache_dir=cache)
+    uncached, _ = annotation_sensitivity.score_model_views(views, preds)
+    assert cached == uncached
+    assert hits == 12
+
+    (holding / "metrics.json").write_text("{}")
+    report = precompute.precompute(**options, cache_dir=cache, workers=2)
+    assert report["state"] == "waiting_for_core_artifacts"
+    assert report["core_jobs_ready"] == 0

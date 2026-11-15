@@ -334,11 +334,20 @@ def _pair_rankings(results: dict) -> dict:
     }
 
 
+def _verify_geometry_replay(saved: dict, replayed: dict, job_id: str, target: str) -> None:
+    if any(
+        not math.isclose(saved[metric], replayed[metric], rel_tol=0, abs_tol=1e-9)
+        for metric in summary.ROW_METRICS
+    ):
+        raise ValueError(f"{job_id}/{target}: baseline prediction replay differs")
+
+
 def _geometry_analysis(
     runs: dict[str, CollectedRun],
     manifest: dict,
     ann_path: Path,
     prediction_paths: dict,
+    cache_dir: Path | None = None,
 ) -> tuple[list[dict], list[dict]]:
     pairs = []
     seed_rows = []
@@ -364,7 +373,7 @@ def _geometry_analysis(
                 predictions[label] = json.loads(payload)
                 labels[label] = key
             views = geometry.build_reference_views(refs, envelope["width_height_px"])
-            scored = geometry.score_reference_views(views, predictions)
+            scored = geometry.score_reference_views(views, predictions, cache_dir=cache_dir)
             results = {
                 view: {labels[label]: values for label, values in result["methods"].items()}
                 for view, result in scored.items()
@@ -372,14 +381,7 @@ def _geometry_analysis(
             baseline = results["baseline"]
             for key, run in source_runs.items():
                 saved = summary._raw_metrics(run.metrics["tests"][target])
-                replayed = baseline[key]["coco"]
-                if any(
-                    not math.isclose(saved[metric], replayed[metric], rel_tol=0, abs_tol=1e-9)
-                    for metric in summary.ROW_METRICS
-                ):
-                    raise ValueError(
-                        f"{run.identifier}/{target}: baseline prediction replay differs"
-                    )
+                _verify_geometry_replay(saved, baseline[key]["coco"], run.identifier, target)
             for view, by_method in results.items():
                 for (method, seed), values in by_method.items():
                     otsu = by_method["otsu", 0]["coco"]
@@ -552,11 +554,12 @@ def _write_final(
     curves: list[dict],
     identity: dict,
     digest: str,
+    cache_dir: Path | None,
 ) -> None:
     with TemporaryDirectory(dir=output) as work:
         staging = Path(work)
         _run_strict_summary(staging, jobs, runs_dir, split, annotations)
-        pairs, seed_rows = _geometry_analysis(runs, manifest, annotations, paths)
+        pairs, seed_rows = _geometry_analysis(runs, manifest, annotations, paths, cache_dir)
         estimates = _geometry_estimates(seed_rows)
         protocol.save_json(
             staging / "reference_geometry.json",
@@ -608,6 +611,7 @@ def finalize(
     split_manifest: Path,
     annotations: Path,
     output_dir: Path,
+    cache_dir: Path | None = None,
 ) -> bool:
     """Return false for an incomplete archive, with progress and no completion marker."""
     output = output_dir.resolve()
@@ -649,6 +653,7 @@ def finalize(
                     curves,
                     identity,
                     digest,
+                    cache_dir,
                 )
             progress["state"] = "complete"
             _atomic_json(progress_path, progress)
@@ -668,6 +673,7 @@ def main() -> None:
     parser.add_argument("--split-manifest", type=Path, required=True)
     parser.add_argument("--annotations", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--cache-dir", type=Path, help="Reuse precomputed reference scores")
     args = parser.parse_args()
     if not finalize(**vars(args)):
         print(f"Archive incomplete. Progress is in {args.output_dir / 'progress.json'}.")

@@ -3,17 +3,24 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
+import os
+import platform
 from collections import defaultdict
 from copy import deepcopy
+from functools import lru_cache
+from importlib.metadata import version
 from pathlib import Path
 from statistics import median
+from tempfile import TemporaryDirectory
 
 import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import maximum_bipartite_matching
 
+from . import evaluation
 from .evaluation import evaluate_coco
 from .protocol import save_json, sha256_file
 
@@ -171,21 +178,101 @@ def center_agreement(references: dict, predictions: list[dict]) -> dict:
     }
 
 
+def _content_hash(value) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+@lru_cache(maxsize=1)
+def _scoring_backend() -> dict:
+    return {
+        "annotation_scorer_sha256": sha256_file(__file__),
+        "coco_evaluator_sha256": sha256_file(evaluation.__file__),
+        "python": platform.python_version(),
+        "system": platform.system(),
+        "machine": platform.machine(),
+        "packages": {name: version(name) for name in ("numpy", "scipy", "pycocotools")},
+    }
+
+
+def _read_cached_score(path: Path, key: str) -> dict | None:
+    try:
+        record = json.loads(path.read_bytes())
+        score = record["score"]
+        if (
+            record["key"] == key
+            and isinstance(score, dict)
+            and set(score) == {"coco", "center_agreement"}
+            and record["score_sha256"] == _content_hash(score)
+        ):
+            return score
+    except (OSError, KeyError, TypeError, ValueError):
+        pass
+    return None
+
+
+def _write_cached_score(path: Path, key: str, score: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(dir=path.parent) as working:
+        pending = Path(working) / path.name
+        save_json(pending, {"key": key, "score": score, "score_sha256": _content_hash(score)})
+        os.replace(pending, path)
+
+
+def score_model_views(
+    views: dict[str, tuple[dict, dict]],
+    predictions: list[dict],
+    *,
+    cache_dir: Path | None = None,
+) -> tuple[dict[str, dict], int]:
+    """Score one frozen prediction set on each reference and return the cache hit count."""
+    identity = {}
+    if cache_dir is not None:
+        identity = {
+            "schema_version": 1,
+            "prediction_sha256": _content_hash(predictions),
+            "scoring_backend": _scoring_backend(),
+            "center_budgets": CENTER_BUDGETS,
+            "center_radii_px": CENTER_RADII,
+        }
+    scores = {}
+    hits = 0
+    for name, (references, _) in views.items():
+        score = None
+        path = None
+        if cache_dir is not None:
+            key = _content_hash({**identity, "reference_sha256": _content_hash(references)})
+            path = cache_dir / key[:2] / f"{key}.json"
+            score = _read_cached_score(path, key)
+        if score is not None:
+            hits += 1
+        else:
+            score = {
+                "coco": evaluate_coco(references, predictions),
+                "center_agreement": center_agreement(references, predictions),
+            }
+            if path is not None:
+                _write_cached_score(path, path.stem, score)
+        scores[name] = score
+    return scores, hits
+
+
 def score_reference_views(
-    views: dict[str, tuple[dict, dict]], predictions_by_method: dict[str, list[dict]]
+    views: dict[str, tuple[dict, dict]],
+    predictions_by_method: dict[str, list[dict]],
+    *,
+    cache_dir: Path | None = None,
 ) -> dict:
     """Score all methods on the same views for one fixed source and target."""
     if not predictions_by_method:
         raise ValueError("At least one frozen prediction set is required")
+    scores = {
+        method: score_model_views(views, predictions, cache_dir=cache_dir)[0]
+        for method, predictions in predictions_by_method.items()
+    }
     results: dict[str, dict] = {}
-    for name, (references, clipping) in views.items():
-        metrics = {
-            method: {
-                "coco": evaluate_coco(references, predictions),
-                "center_agreement": center_agreement(references, predictions),
-            }
-            for method, predictions in predictions_by_method.items()
-        }
+    for name, (_, clipping) in views.items():
+        metrics = {method: method_scores[name].copy() for method, method_scores in scores.items()}
         rankings = {}
         for metric in AP_METRICS:
             values = {method: row["coco"][metric] for method, row in metrics.items()}
@@ -298,6 +385,7 @@ def main() -> None:
     parser.add_argument("--target", required=True)
     parser.add_argument("--pred", metavar="METHOD=PATH", required=True, action="append")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--cache-dir", type=Path, help="Reuse content-addressed model scores")
     args = parser.parse_args()
     inputs = {args.ann.resolve(), args.manifest.resolve()}
     inputs.update(Path(item.partition("=")[2]).resolve() for item in args.pred)
@@ -328,7 +416,7 @@ def main() -> None:
             "clipping": "Continuous COCO coordinates. An axis that leaves the image retains "
             "up to one pixel along the closest edge.",
         },
-        "results": score_reference_views(views, predictions),
+        "results": score_reference_views(views, predictions, cache_dir=args.cache_dir),
     }
     save_json(args.output, report)
 

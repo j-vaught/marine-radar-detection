@@ -143,3 +143,56 @@ class AnnotationSensitivityTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_cache_combined_results_and_tamper_detection(tmp_path, monkeypatch):
+    from src.revision import annotation_sensitivity as geometry
+
+    references = {
+        "images": [{"id": 1, "width": 50, "height": 50}],
+        "annotations": [
+            {
+                "id": 1,
+                "image_id": 1,
+                "category_id": 1,
+                "bbox": [15, 15, 12, 8],
+                "area": 96,
+                "iscrowd": 0,
+            }
+        ],
+        "categories": [{"id": 1, "name": "vessel"}],
+    }
+    proposals = [{"image_id": 1, "category_id": 1, "bbox": [15, 15, 12, 8], "score": 0.8}]
+    views = geometry.build_reference_views(references, (7, 10))
+    expected = geometry.score_reference_views(views, {"otsu": proposals, "other": []})
+
+    cache = tmp_path / "cache"
+    for predictions in (proposals, []):
+        _, hits = geometry.score_model_views(views, predictions, cache_dir=cache)
+        assert hits < 12
+    assert (
+        geometry.score_reference_views(views, {"otsu": proposals, "other": []}, cache_dir=cache)
+        == expected
+    )
+
+    baseline = {"baseline": views["baseline"]}
+    isolated = tmp_path / "isolated"
+    geometry.score_model_views(baseline, proposals, cache_dir=isolated)
+    (entry,) = isolated.glob("*/*.json")
+    contaminated = json.loads(entry.read_text())
+    contaminated["score"]["coco"]["ap"] = 42
+    entry.write_text(json.dumps(contaminated))
+    rescored, hits = geometry.score_model_views(baseline, proposals, cache_dir=isolated)
+    assert hits == 0
+    assert rescored["baseline"]["coco"] == expected["baseline"]["methods"]["otsu"]["coco"]
+
+    moved = [{**proposals[0], "bbox": [35, 35, 12, 8]}]
+    _, hits = geometry.score_model_views(baseline, moved, cache_dir=isolated)
+    assert hits == 0
+    other_ref = {"shift_x_4": views["shift_x_4"]}
+    _, hits = geometry.score_model_views(other_ref, proposals, cache_dir=isolated)
+    assert hits == 0
+    monkeypatch.setattr(geometry, "CENTER_RADII", (8,))
+    scores, hits = geometry.score_model_views(baseline, proposals, cache_dir=isolated)
+    assert hits == 0
+    assert len(scores["baseline"]["center_agreement"]["rows"]) == 3
