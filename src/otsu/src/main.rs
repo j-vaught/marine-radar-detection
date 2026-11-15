@@ -36,6 +36,7 @@ enum Commands {
     Eval(EvalArgs),
     Bench(BenchArgs),
     Matrix(MatrixArgs),
+    Sweep(SweepArgs),
 }
 
 #[derive(Args)]
@@ -82,6 +83,15 @@ struct BenchArgs {
     backend: Backend,
     #[command(flatten)]
     config: ConfigArgs,
+}
+
+#[derive(Args)]
+struct SweepArgs {
+    #[arg(long)] ann: PathBuf,
+    #[arg(long)] images: PathBuf,
+    #[arg(long)] out_dir: PathBuf,
+    #[arg(long, value_enum, default_value_t = Backend::Cpu)] backend: Backend,
+    #[arg(long, value_enum, default_value_t = Method::Otsu)] method: Method,
 }
 
 #[derive(Args)]
@@ -187,6 +197,7 @@ fn main() -> Result<()> {
         Commands::Eval(args) => eval_predictions(args),
         Commands::Bench(args) => bench(args),
         Commands::Matrix(args) => run_matrix(args),
+        Commands::Sweep(args) => sweep(args),
     }
 }
 
@@ -275,6 +286,41 @@ fn bench(args: BenchArgs) -> Result<()> {
     );
     if args.backend == Backend::Cuda {
         println!("cuda available: {}", cuda::is_available());
+    }
+    Ok(())
+}
+
+
+/// Export every candidate's predictions for independent, shared evaluation.
+fn sweep(args: SweepArgs) -> Result<()> {
+    let dataset = load_coco_dataset(&args.ann)?;
+    let indices = (0..dataset.images.len()).collect::<Vec<_>>();
+    let configs = build_search_grid(args.method, GridSize::Small);
+    std::fs::create_dir_all(&args.out_dir)?;
+    std::fs::write(args.out_dir.join("configs.json"), serde_json::to_vec_pretty(&configs)?)?;
+    let mut grouped = HashMap::<HeavyConfig, Vec<usize>>::new();
+    for (index, config) in configs.iter().enumerate() {
+        let heavy = HeavyConfig::from_detector(&config.detector_config(args.method));
+        grouped.entry(heavy).or_default().push(index);
+    }
+    for group in grouped.into_values() {
+        let preprocessed = preprocess_subset(&dataset, &args.images, None, &indices,
+            &configs[group[0]].detector_config(args.method), args.backend)?;
+        let mut cache = HashMap::<(usize, bool), Vec<Vec<DetectionCandidate>>>::new();
+        for index in group {
+            let config = configs[index].detector_config(args.method);
+            let shape = config.min_eccentricity > 0.0 || config.max_eccentricity < 1.0;
+            let key = (config.dilation, shape);
+            if !cache.contains_key(&key) {
+                let candidates = preprocessed.iter().map(|output|
+                    candidates_from_preprocessed(output, &config, args.backend == Backend::Cuda)
+                ).collect::<Result<Vec<_>>>()?;
+                cache.insert(key, candidates);
+            }
+            let predictions = predictions_from_candidate_subset(&dataset, &indices, &preprocessed,
+                cache.get(&key).unwrap(), &config);
+            save_predictions(&args.out_dir.join(format!("candidate_{index:04}.json")), &predictions)?;
+        }
     }
     Ok(())
 }

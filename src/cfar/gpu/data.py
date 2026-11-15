@@ -79,8 +79,9 @@ def load_corpus(
         file_names.append(info["file_name"])
         site_tags[i] = _site_from_filename(info["file_name"])
 
-    circle = np.zeros((H, W), dtype=np.uint8)
-    cv2.circle(circle, PPI_CENTER, PPI_RADIUS, 1, -1)
+    yy, xx = np.ogrid[:H, :W]
+    circle = (((xx - PPI_CENTER[0]) ** 2 + (yy - PPI_CENTER[1]) ** 2)
+              <= PPI_RADIUS ** 2).astype(np.uint8)
     stack = (stack.astype(np.float32) / 255.0) * circle[None, :, :]
 
     images = torch.from_numpy(stack).to(device=device, dtype=dtype).unsqueeze(1)

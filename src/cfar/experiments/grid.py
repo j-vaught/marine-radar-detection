@@ -17,7 +17,12 @@ from ..gpu.data import Corpus
 from ..gpu.eval_coco import build_gt_index, evaluate, fast_ap50
 from ..gpu.os_cfar import os_alpha, os_rank_maps_hist
 from ..gpu.postproc import PackedPreds, concat_packed_preds, mask_to_pred_arrays
-from ..gpu.triton_mask import build_threshold_masks
+try:
+    from ..gpu.triton_mask import build_threshold_masks
+except ImportError:
+    def build_threshold_masks(images, stat_maps, alphas):
+        return ((images[:, :, None] > stat_maps[:, :, None] * alphas.view(1, 1, -1, 1, 1))
+                & (images[:, :, None] > 0)).to(torch.uint8)
 
 WINDOWS: list[tuple[int, int]] = [(10, 25), (15, 30), (20, 40)]
 PFAS: list[float] = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
@@ -117,7 +122,11 @@ def _predict_batch_multi(
     min_areas: tuple[int, ...],
 ) -> list[list[list[dict[int, PackedPreds]]]]:
     """Return packed predictions indexed as [batch_idx][stat_idx][alpha_idx][min_area]."""
-    masks_gpu = build_threshold_masks(images, stat_maps, alphas)
+    if images.is_cuda:
+        masks_gpu = build_threshold_masks(images, stat_maps, alphas)
+    else:
+        masks_gpu = ((images[:, :, None] > stat_maps[:, :, None] * alphas.view(1, 1, -1, 1, 1))
+                     & (images[:, :, None] > 0)).to(torch.uint8)
     masks_np = masks_gpu.cpu().numpy()
     intensities_np = images[:, 0].cpu().numpy()
     stats_np = stat_maps.cpu().numpy()
