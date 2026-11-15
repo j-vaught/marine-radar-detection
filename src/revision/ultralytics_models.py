@@ -434,6 +434,9 @@ def run_job(job: dict) -> dict:
         "evaluation_recipe": "yolo-exact-letterbox-v1"
         if method == "yolo"
         else "rtdetr-scalefill-v1",
+        "evaluation_recipe_version": "yolo-exact-letterbox-v1"
+        if method == "yolo"
+        else "rtdetr-scalefill-v1",
         "job": {k: str(v) if isinstance(v, Path) else v for k, v in job.items()},
         "config": cfg,
         "train_args": args,
