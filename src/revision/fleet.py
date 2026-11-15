@@ -184,6 +184,57 @@ def validate_metrics(job, data):
             raise ValueError("checkpoint digest mismatch")
 
 
+def runtime_provenance(job):
+    """Capture the effective process environment without changing backend settings."""
+    result = {
+        "machine": platform.machine(),
+        "processor": platform.processor(),
+        "cpu_count": os.cpu_count(),
+        "thread_environment": {
+            name: os.environ.get(name)
+            for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "RAYON_NUM_THREADS")
+        },
+        "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+    }
+    try:
+        result["cpu_affinity_count"] = len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        result["cpu_affinity_count"] = None
+    if not result["processor"]:
+        try:
+            cpuinfo = Path("/proc/cpuinfo").read_text()
+            result["processor"] = next(
+                (line.split(":", 1)[1].strip() for line in cpuinfo.splitlines()
+                 if line.startswith("model name") and ":" in line), ""
+            )
+        except OSError:
+            pass
+    # Do not import torch for classical CPU jobs merely to collect metadata.
+    torch = sys.modules.get("torch")
+    if torch is not None:
+        try:
+            result["torch"] = {
+                "version": str(torch.__version__),
+                "cuda_version": torch.version.cuda,
+                "deterministic_algorithms": torch.are_deterministic_algorithms_enabled(),
+                "cudnn_deterministic": torch.backends.cudnn.deterministic,
+                "cudnn_benchmark": torch.backends.cudnn.benchmark,
+                "cudnn_allow_tf32": torch.backends.cudnn.allow_tf32,
+                "matmul_allow_tf32": torch.backends.cuda.matmul.allow_tf32,
+            }
+            if job.get("gpu_uuid"):
+                props = torch.cuda.get_device_properties(0)
+                result["gpu"] = {
+                    "uuid": job["gpu_uuid"],
+                    "model": props.name,
+                    "total_memory_bytes": props.total_memory,
+                    "compute_capability": [props.major, props.minor],
+                }
+        except Exception as exc:  # noqa: BLE001 - provenance cannot break a completed job
+            result["torch_provenance_error"] = f"{type(exc).__name__}: {exc}"
+    return result
+
+
 def worker(job_path, completion_path, attempt):
     job = json.loads(Path(job_path).read_text())
     nonce = job["attempt_nonce"]
@@ -237,6 +288,10 @@ def worker(job_path, completion_path, attempt):
     except BaseException as exc:  # noqa: BLE001 - record interrupted jobs before exiting
         traceback.print_exc()
         completion.update(exit_code=1, error=f"{type(exc).__name__}: {exc}")
+    try:
+        completion["runtime_provenance"] = runtime_provenance(job)
+    except Exception as exc:  # noqa: BLE001 - provenance cannot break a completed job
+        completion["runtime_provenance_error"] = f"{type(exc).__name__}: {exc}"
     completion["finished"] = now()
     atomic_json(completion_path, completion)
     return completion["exit_code"]

@@ -35,6 +35,7 @@ def test_worker_records_model_failure(tmp_path):
     completion = json.loads(dest.read_text())
     assert completion["state"] == "failed"
     assert completion["failure_kind"] == "model"
+    assert "thread_environment" in completion["runtime_provenance"]
 
 
 def test_worker_requires_metrics(tmp_path):
@@ -104,3 +105,44 @@ def test_prepare_persists_paths_and_uuid():
     assert rec["receipt"] == "/r/runs/a/2/receipt.json"
     assert rec["gpu_uuid"] == "GPU-abc"
     assert rec["device"] == 3 and rec["nonce"]
+
+
+def test_runtime_provenance_reports_gpu_and_backend_settings(monkeypatch):
+    import sys
+    from types import SimpleNamespace as NS
+
+    fake = NS(
+        __version__="2.4.1",
+        version=NS(cuda="12.1"),
+        are_deterministic_algorithms_enabled=lambda: True,
+        backends=NS(
+            cudnn=NS(deterministic=True, benchmark=False, allow_tf32=True),
+            cuda=NS(matmul=NS(allow_tf32=False)),
+        ),
+        cuda=NS(get_device_properties=lambda _: NS(name="GPU model", total_memory=1234, major=8, minor=6)),
+    )
+    monkeypatch.setitem(sys.modules, "torch", fake)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-abc")
+    monkeypatch.setenv("OMP_NUM_THREADS", "4")
+    result = fleet.runtime_provenance({"gpu_uuid": "GPU-abc"})
+    assert result["cuda_visible_devices"] == "GPU-abc"
+    assert result["gpu"] == {"uuid": "GPU-abc", "model": "GPU model", "total_memory_bytes": 1234, "compute_capability": [8, 6]}
+    assert result["torch"]["version"] == "2.4.1"
+    assert result["torch"]["cuda_version"] == "12.1"
+    assert result["torch"]["deterministic_algorithms"] is True
+    assert result["torch"]["matmul_allow_tf32"] is False
+    assert result["thread_environment"]["OMP_NUM_THREADS"] == "4"
+    assert "cpu_count" in result and "machine" in result and "processor" in result
+
+
+def test_runtime_provenance_cpu_without_torch(monkeypatch):
+    import sys
+
+    monkeypatch.delitem(sys.modules, "torch", raising=False)
+    monkeypatch.setenv("MKL_NUM_THREADS", "3")
+    monkeypatch.setenv("RAYON_NUM_THREADS", "2")
+    result = fleet.runtime_provenance({})
+    assert result["thread_environment"]["MKL_NUM_THREADS"] == "3"
+    assert result["thread_environment"]["RAYON_NUM_THREADS"] == "2"
+    assert "torch" not in sys.modules
+    assert "gpu" not in result
