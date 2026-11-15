@@ -237,32 +237,36 @@ def run_job(job: dict) -> dict:
         # on_model_save fires after save_model and before final_eval strips optimizer state.
         resume_dir = out / "resume"
         resume_dir.mkdir(exist_ok=True)
-        rng = {
-            "python": random.getstate(),
-            "numpy": np.random.get_state(),
-            "torch": torch.get_rng_state(),
-            "cuda": torch.cuda.get_rng_state_all() if is_cuda else [],
-        }
-        training_state = {
-            "epoch": trainer.epoch,
-            "model": trainer.model.state_dict(),
-            "optimizer": trainer.optimizer.state_dict(),
-            "scaler": trainer.scaler.state_dict(),
-            "scheduler": trainer.scheduler.state_dict(),
-            "rng": rng,
-        }
-        torch.save(training_state, resume_dir / "last_training_state.pt")
-        shutil.copy2(trainer.last, resume_dir / "last.pt")
-        torch.save(rng, resume_dir / "last_rng.pt")
+        rng = {'python': random.getstate(), 'numpy': np.random.get_state(),
+               'torch': torch.get_rng_state(),
+               'cuda': torch.cuda.get_rng_state_all() if is_cuda else []}
+        training_state = {'epoch': trainer.epoch, 'model': trainer.model.state_dict(),
+                          'optimizer': trainer.optimizer.state_dict(), 'scaler': trainer.scaler.state_dict(),
+                          'scheduler': trainer.scheduler.state_dict(), 'rng': rng}
+        # Replace atomically so a hard-linked best state remains immutable when
+        # the next epoch updates the last state. This also avoids serializing the
+        # large training state twice on epochs with a new best.
+        state_path = resume_dir / 'last_training_state.pt'
+        pending_path = resume_dir / '.last_training_state.tmp'
+        torch.save(training_state, pending_path)
+        os.replace(pending_path, state_path)
+        shutil.copy2(trainer.last, resume_dir / 'last.pt')
+        torch.save(rng, resume_dir / 'last_rng.pt')
         if trainer.fitness == trainer.best_fitness:
-            torch.save(training_state, resume_dir / "best_training_state.pt")
-            shutil.copy2(trainer.best, resume_dir / "best.pt")
-            torch.save(rng, resume_dir / "best_rng.pt")
-            state["best_epoch"] = int(trainer.epoch)
-            state["best_fitness"] = float(trainer.fitness)
-
-    model.add_callback("on_pretrain_routine_end", capture_initial)
-    model.add_callback("on_model_save", capture_checkpoint)
+            best_state = resume_dir / 'best_training_state.pt'
+            best_pending = resume_dir / '.best_training_state.tmp'
+            best_pending.unlink(missing_ok=True)
+            try:
+                os.link(state_path, best_pending)
+            except OSError:
+                shutil.copy2(state_path, best_pending)
+            os.replace(best_pending, best_state)
+            shutil.copy2(trainer.best, resume_dir / 'best.pt')
+            torch.save(rng, resume_dir / 'best_rng.pt')
+            state['best_epoch'] = int(trainer.epoch)
+            state['best_fitness'] = float(trainer.fitness)
+    model.add_callback('on_pretrain_routine_end', capture_initial)
+    model.add_callback('on_model_save', capture_checkpoint)
     if is_cuda:
         torch.cuda.reset_peak_memory_stats()
     started = time.perf_counter()
