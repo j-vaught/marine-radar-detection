@@ -248,7 +248,12 @@ def test_gpu_receipt_must_match_fp32_with_tf32_disabled(tmp_path):
         "python_version": "3.11.15",
         **flags,
     }
-    assert analysis._runtime_signature(receipt, runtime)[0] == analysis.GPU_MODEL
+    gpu = receipt.completion["runtime_provenance"]["gpu"]
+    gpu["total_memory_bytes"] = 50_855_870_464
+    signature = analysis._runtime_signature(receipt, runtime)
+    assert signature[0] == analysis.GPU_MODEL
+    gpu["total_memory_bytes"] = 50_865_307_648
+    assert analysis._runtime_signature(receipt, runtime) == signature
     with pytest.raises(ValueError, match="FP32 policy differs"):
         analysis._runtime_signature(receipt, {**runtime, "cudnn_allow_tf32": True})
     with pytest.raises(ValueError, match="numerical policy differs"):
@@ -267,3 +272,39 @@ def test_relocated_prediction_artifacts_are_confined_and_checksummed(tmp_path):
         analysis._artifact(receipt, "/worker/path/to/another/attempt/raw.json", digest)
     with pytest.raises(ValueError, match="artifact digest mismatch"):
         analysis._artifact(receipt, "raw.json", "f" * 64)
+
+
+def test_ada_capacity_tolerance_preserves_evidence_and_headroom(tmp_path):
+    low, high = 50_855_870_464, 50_865_307_648
+    peak = 1_630_000_000
+
+    def observed(capacity, uuid, used=peak):
+        receipt = analysis.Receipt(
+            {"job_id": "demo"},
+            {"runtime_provenance": {"gpu": {"uuid": uuid, "total_memory_bytes": capacity}}},
+            tmp_path,
+            b"",
+            "paired-host",
+        )
+        return analysis._memory_evidence(receipt, {"peak_vram_bytes": used})
+
+    evidence = [observed(low, "GPU-low"), observed(high, "GPU-high")]
+    measured = analysis._verify_memory_block(("DAAN", 0), evidence)
+    assert measured["spread_bytes"] == 9 * 1024**2
+    assert measured["relative_spread"] == pytest.approx((high - low) / low)
+    assert measured["max_peak_fraction_of_min_capacity"] == pytest.approx(peak / low)
+    assert evidence[1]["gpu_uuid"] == "GPU-high"
+    assert evidence[1]["total_memory_bytes"] == high
+
+    with pytest.raises(ValueError, match="capacity outside"):
+        observed(44 * 1024**3, "GPU-small")
+    with pytest.raises(ValueError, match="invalid peak"):
+        observed(high, "GPU-high", used=high)
+    with pytest.raises(ValueError, match="spread exceeds 1%"):
+        analysis._verify_memory_block(
+            ("DAAN", 0), [evidence[0], observed(48 * 1024**3, "GPU-other")]
+        )
+    with pytest.raises(ValueError, match="exceeds matched device capacity"):
+        analysis._verify_memory_block(
+            ("DAAN", 0), [evidence[0], observed(high, "GPU-high", used=low)]
+        )

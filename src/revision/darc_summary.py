@@ -51,6 +51,7 @@ class Fit:
     receipt: Receipt
     metrics: dict
     runtime: dict
+    gpu_memory: dict
     training: dict
     prediction_paths: dict
 
@@ -362,7 +363,6 @@ def _runtime_signature(receipt: Receipt, runtime: dict) -> tuple:
     return (
         gpu["model"],
         tuple(gpu["compute_capability"]),
-        gpu["total_memory_bytes"],
         runtime["torch_version"],
         runtime["torchvision_version"],
         runtime["cuda_version"],
@@ -382,15 +382,48 @@ def _runtime_signature(receipt: Receipt, runtime: dict) -> tuple:
     )
 
 
+def _memory_evidence(receipt: Receipt, runtime: dict) -> dict:
+    """Preserve the individual capacity report and enforce plausible Ada headroom."""
+    gpu = receipt.completion["runtime_provenance"]["gpu"]
+    capacity, peak = gpu["total_memory_bytes"], runtime["peak_vram_bytes"]
+    gib = 1024**3
+    if type(capacity) is not int or not 45 * gib <= capacity <= 49 * gib:
+        raise ValueError(f"{receipt.job['job_id']}: reported GPU capacity outside 45–49 GiB")
+    if type(peak) is not int or not 0 < peak < capacity:
+        raise ValueError(f"{receipt.job['job_id']}: invalid peak GPU allocation")
+    return {"gpu_uuid": gpu["uuid"], "total_memory_bytes": capacity, "peak_vram_bytes": peak}
+
+
+def _verify_memory_block(block: tuple[str, int], evidence: list[dict]) -> dict:
+    """Allow small capacity-report variation while checking headroom on every device."""
+    capacities = [row["total_memory_bytes"] for row in evidence]
+    low, high = min(capacities), max(capacities)
+    spread = high - low
+    peak = max(row["peak_vram_bytes"] for row in evidence)
+    if spread * 100 > low:
+        raise ValueError(f"{block}: GPU capacity spread exceeds 1% within the matched block")
+    if peak >= low:
+        raise ValueError(f"{block}: peak GPU allocation exceeds matched device capacity")
+    return {
+        "min_total_memory_bytes": low,
+        "max_total_memory_bytes": high,
+        "spread_bytes": spread,
+        "relative_spread": spread / low,
+        "max_peak_vram_bytes": peak,
+        "max_peak_fraction_of_min_capacity": peak / low,
+    }
+
+
 def _prepare_fits(
     receipts: dict[str, Receipt], references: dict, spec: dict, spec_digest: str
-) -> dict[FitKey, Fit]:
+) -> tuple[dict[FitKey, Fit], list[dict]]:
     from .darc_data import select_count_subset, train_stream
 
     policy, contract = spec["fit_policy"], spec["inputs"]
     presentations = policy["optimizer_updates"] * policy["batch_size"]
     train_cache = {}
     signatures = {}
+    memory = defaultdict(list)
     states = {}
     scale_audits = {}
     checkpoint_digests = set()
@@ -501,6 +534,8 @@ def _prepare_fits(
             raise ValueError(
                 f"{job_id}: hardware, environment, or precision differs within the matched block"
             )
+        evidence = _memory_evidence(fit, runtime)
+        memory[source, seed].append(evidence)
         if runtime["training_updates"] != policy["optimizer_updates"] or runtime[
             "validation_count"
         ] != len(history):
@@ -534,6 +569,7 @@ def _prepare_fits(
             fit,
             metrics,
             runtime,
+            evidence,
             {
                 "train_frames": len(train["images"]),
                 "train_boxes": len(train["annotations"]),
@@ -542,7 +578,11 @@ def _prepare_fits(
             },
             paths,
         )
-    return fits
+    block_memory = [
+        {"source": source, "seed": seed, **_verify_memory_block((source, seed), evidence)}
+        for (source, seed), evidence in sorted(memory.items())
+    ]
+    return fits, block_memory
 
 
 def _test_rows(fits: dict[FitKey, Fit], references: dict) -> list[dict]:
@@ -694,7 +734,7 @@ def summarize(
 ) -> dict:
     spec, jobs, receipts = _preflight(runs_dir, state_dir, jobs_path, score_gate, protocol_path)
     references = _release_references(spec, jobs, split_path, annotations)
-    fits = _prepare_fits(receipts, references, spec, jobs["protocol_sha256"])
+    fits, block_memory = _prepare_fits(receipts, references, spec, jobs["protocol_sha256"])
     tests = _test_rows(fits, references)
     gaps, effects, estimates = _paired_effects(tests)
     return {
@@ -725,6 +765,7 @@ def summarize(
             "fits": 42,
             "target_evaluations": 126,
         },
+        "gpu_memory_pairing": block_memory,
         "fits": [
             {
                 "source": key[0],
@@ -741,6 +782,7 @@ def summarize(
                 "subset_ids_sha256": fit.metrics["subset_ids_sha256"],
                 "checkpoint_sha256": fit.metrics["best_weights_sha256"],
                 "runtime": fit.runtime,
+                "gpu_memory": fit.gpu_memory,
                 **fit.training,
             }
             for key, fit in sorted(fits.items())
