@@ -94,7 +94,7 @@ def main():
     if mode == 'inventory':
         print(json.dumps(inventory(sys.argv[2]), sort_keys=True))
     elif mode == 'stream':
-        with tarfile.open(fileobj=sys.stdout.buffer, mode='w|') as tar:
+        with tarfile.open(fileobj=sys.stdout.buffer, mode='w|', dereference=True) as tar:
             for rel, path in files(sys.argv[2]):
                 with open_regular(path) as f:
                     info = tar.gettarinfo(fileobj=f, arcname=rel)

@@ -176,3 +176,17 @@ def test_remote_errors_do_not_log_encoded_commands():
         1, ["ssh", "encoded-secret-command"], stderr=b"remote error"
     )
     assert archive.error_message(exc) == "Remote command failed (exit 1): remote error"
+
+
+def test_hardlinked_checkpoints_roundtrip(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "last_training_state.pt").write_bytes(b"checkpoint contents")
+    (source / "best_training_state.pt").hardlink_to(source / "last_training_state.pt")
+    manifest = remote("inventory", source).stdout
+    stream = remote("stream", source).stdout
+    stage = tmp_path / "stage"
+    remote("extract", stage, data=stream)
+    assert json.loads(remote("inventory", stage).stdout) == json.loads(manifest)
+    assert (stage / "best_training_state.pt").read_bytes() == b"checkpoint contents"
+    assert (stage / "last_training_state.pt").read_bytes() == b"checkpoint contents"
