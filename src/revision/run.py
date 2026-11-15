@@ -1,4 +1,5 @@
 """Execute a single revision job from a JSON specification."""
+
 from __future__ import annotations
 
 import argparse
@@ -7,10 +8,15 @@ import json
 from pathlib import Path
 
 MODULES = {
-    "faster_rcnn": "torch_models", "unet": "torch_models",
-    "yolo": "ultralytics_models", "rtdetr": "ultralytics_models",
-    "ca_cfar": "classical", "os_cfar": "classical", "otsu": "classical",
-    "ss_otsu": "classical", "wavelet": "classical",
+    "faster_rcnn": "torch_models",
+    "unet": "torch_models",
+    "yolo": "ultralytics_models",
+    "rtdetr": "ultralytics_models",
+    "ca_cfar": "classical",
+    "os_cfar": "classical",
+    "otsu": "classical",
+    "ss_otsu": "classical",
+    "wavelet": "classical",
 }
 
 

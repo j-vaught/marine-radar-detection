@@ -1,27 +1,28 @@
 """Conservative, resumable SSH job scheduler. See --help for usage."""
+
 from __future__ import annotations
 
 import argparse
 import datetime as dt
 import fcntl
 import hashlib
-import uuid
-import platform
 import json
 import math
 import os
-from pathlib import Path
+import platform
 import shlex
 import subprocess
 import sys
 import time
 import traceback
+import uuid
+from pathlib import Path
 
 GPU_METHODS = {"faster_rcnn", "unet", "yolo", "rtdetr"}
 
 
 def now():
-    return dt.datetime.now(dt.timezone.utc).isoformat()
+    return dt.datetime.now(dt.UTC).isoformat()
 
 
 def atomic_json(path, value):
@@ -33,8 +34,13 @@ def atomic_json(path, value):
 
 
 def ssh(host, command, timeout=30):
-    return subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", host, command],
-                          capture_output=True, text=True, timeout=timeout, check=True).stdout
+    return subprocess.run(
+        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", host, command],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=True,
+    ).stdout
 
 
 def quote_cmd(parts):
@@ -46,12 +52,19 @@ def gpu_free(host, config):
     prefix = [config["wrapper"]] if config.get("wrapper") else []
     cmd = prefix + ["nvidia-smi", "--query-gpu=index,uuid", "--format=csv,noheader,nounits"]
     all_gpu = ssh(host, quote_cmd(cmd)).strip().splitlines()
-    cmd = prefix + ["nvidia-smi", "--query-compute-apps=gpu_uuid,pid", "--format=csv,noheader,nounits"]
+    cmd = prefix + [
+        "nvidia-smi",
+        "--query-compute-apps=gpu_uuid,pid",
+        "--format=csv,noheader,nounits",
+    ]
     active = ssh(host, quote_cmd(cmd)).strip().splitlines()
     busy = {line.split(",")[0].strip() for line in active if line.strip()}
     allowed = config.get("allowed_gpus")
-    return [(int(index.strip()), gpu_uuid.strip()) for index, gpu_uuid in (line.split(",", 1) for line in all_gpu)
-            if gpu_uuid.strip() not in busy and (allowed is None or int(index.strip()) in allowed)]
+    return [
+        (int(index.strip()), gpu_uuid.strip())
+        for index, gpu_uuid in (line.split(",", 1) for line in all_gpu)
+        if gpu_uuid.strip() not in busy and (allowed is None or int(index.strip()) in allowed)
+    ]
 
 
 def resolve(value, values):
@@ -67,13 +80,21 @@ def resolve(value, values):
 def cuda_uuid():
     """Initialize logical device zero and locate this process in the driver process table."""
     import torch
+
     torch.cuda.set_device(0)
     probe = torch.empty(1, device="cuda:0")
-    rows = subprocess.run(["nvidia-smi", "--query-compute-apps=gpu_uuid,pid",
-                           "--format=csv,noheader,nounits"], check=True,
-                          capture_output=True, text=True, timeout=30).stdout.splitlines()
-    found = {parts[0].strip() for row in rows if len(parts := row.split(",")) == 2
-             and parts[1].strip() == str(os.getpid())}
+    rows = subprocess.run(
+        ["nvidia-smi", "--query-compute-apps=gpu_uuid,pid", "--format=csv,noheader,nounits"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    ).stdout.splitlines()
+    found = {
+        parts[0].strip()
+        for row in rows
+        if len(parts := row.split(",")) == 2 and parts[1].strip() == str(os.getpid())
+    }
     del probe
     if len(found) != 1:
         raise RuntimeError(f"Cannot verify this worker's GPU UUID: {sorted(found)}")
@@ -82,14 +103,20 @@ def cuda_uuid():
 
 def process_identity():
     stat = Path(f"/proc/{os.getpid()}/stat").read_text().split()
-    return {"pid": os.getpid(), "start_ticks": stat[21],
-            "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip()}
+    return {
+        "pid": os.getpid(),
+        "start_ticks": stat[21],
+        "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
+    }
 
 
 def validate_metrics(job, data):
     if not isinstance(data, dict) or data.get("job_id") != job["job_id"]:
         raise ValueError("metrics job identity mismatch")
-    if data.get("manifest_sha256", data.get("paths", {}).get("manifest_sha256")) != job["protocol_sha256"]:
+    if (
+        data.get("manifest_sha256", data.get("paths", {}).get("manifest_sha256"))
+        != job["protocol_sha256"]
+    ):
         raise ValueError("metrics manifest digest mismatch")
     for key in ("method", "stage", "condition"):
         if data.get(key) != job.get(key):
@@ -104,13 +131,19 @@ def validate_metrics(job, data):
         ap = raw.get("ap", raw.get("AP", raw.get("mAP")))
         if not isinstance(ap, (float, int)) or not math.isfinite(ap):
             raise ValueError(f"missing or nonfinite AP for {target}")
-        prediction = result.get("raw_path") or data.get("paths", {}).get("subsets", {}).get("test_" + target, {}).get("predictions")
+        prediction = result.get("raw_path") or data.get("paths", {}).get("subsets", {}).get(
+            "test_" + target, {}
+        ).get("predictions")
         if not prediction:
             prediction = str(Path(job["out_dir"]) / f"{target}_raw_predictions.json")
         if not Path(prediction).is_file():
             raise ValueError(f"missing predictions for {target}: {prediction}")
     if tests and job["method"] in GPU_METHODS:
-        digest = data.get("checkpoint_sha256") or data.get("best_sha256") or data.get("best_weights_sha256")
+        digest = (
+            data.get("checkpoint_sha256")
+            or data.get("best_sha256")
+            or data.get("best_weights_sha256")
+        )
         checkpoint = data.get("best_checkpoint") or data.get("checkpoint")
         if not digest or not checkpoint or not Path(checkpoint).is_file():
             raise ValueError("missing checkpoint path or digest")
@@ -122,19 +155,28 @@ def worker(job_path, completion_path, attempt):
     job = json.loads(Path(job_path).read_text())
     nonce = job["attempt_nonce"]
     # Receipt is written by the worker itself, before imports or training.
-    receipt = {"job_id": job["job_id"], "attempt": attempt, "nonce": nonce,
-               **process_identity()}
+    receipt = {"job_id": job["job_id"], "attempt": attempt, "nonce": nonce, **process_identity()}
     atomic_json(Path(job["out_dir"]) / "receipt.json", receipt)
-    completion = {**receipt, "started": now(), "state": "failed", "failure_kind": "model",
-                  "code_commit": job.get("code_commit"), "python": sys.version,
-                  "platform": platform.platform(), "gpu_uuid": job.get("gpu_uuid")}
+    completion = {
+        **receipt,
+        "started": now(),
+        "state": "failed",
+        "failure_kind": "model",
+        "code_commit": job.get("code_commit"),
+        "python": sys.version,
+        "platform": platform.platform(),
+        "gpu_uuid": job.get("gpu_uuid"),
+    }
     manifest = Path(job.get("manifest", ""))
     if manifest.is_file():
         completion["manifest_sha256"] = hashlib.sha256(manifest.read_bytes()).hexdigest()
     try:
         if not manifest.is_file():
             raise RuntimeError(f"Missing protocol manifest: {manifest}")
-        if not job.get("protocol_sha256") or completion["manifest_sha256"] != job["protocol_sha256"]:
+        if (
+            not job.get("protocol_sha256")
+            or completion["manifest_sha256"] != job["protocol_sha256"]
+        ):
             raise RuntimeError("Protocol manifest SHA-256 mismatch or expected digest missing")
         if job.get("gpu_uuid"):
             if os.environ.get("CUDA_VISIBLE_DEVICES") != job["gpu_uuid"]:
@@ -142,17 +184,24 @@ def worker(job_path, completion_path, attempt):
             actual = cuda_uuid()
             completion["observed_gpu_uuid"] = actual
             if actual.lower() != job["gpu_uuid"].lower():
-                raise RuntimeError(f"CUDA device mismatch: expected {job['gpu_uuid']}, got {actual}")
+                raise RuntimeError(
+                    f"CUDA device mismatch: expected {job['gpu_uuid']}, got {actual}"
+                )
         from src.revision.run import run_job
+
         run_job(job)
         metrics = Path(job["out_dir"]) / "metrics.json"
         if not metrics.is_file():
             raise RuntimeError(f"Missing metrics: {metrics}")
         data = json.loads(metrics.read_text())
         validate_metrics(job, data)
-        completion.update(state="succeeded", exit_code=0, failure_kind=None,
-                          metrics_sha256=hashlib.sha256(metrics.read_bytes()).hexdigest())
-    except BaseException as exc:
+        completion.update(
+            state="succeeded",
+            exit_code=0,
+            failure_kind=None,
+            metrics_sha256=hashlib.sha256(metrics.read_bytes()).hexdigest(),
+        )
+    except BaseException as exc:  # noqa: BLE001 - record interrupted jobs before exiting
         traceback.print_exc()
         completion.update(exit_code=1, error=f"{type(exc).__name__}: {exc}")
     completion["finished"] = now()
@@ -178,32 +227,61 @@ try:
 except FileNotFoundError: print(json.dumps({'receipt':r,'alive':False}))
 except Exception as e: print(json.dumps({'receipt':r,'unknown':str(e)}))
 """
-    return json.loads(ssh(host, quote_cmd([state["python"], "-c", script,
-                                          state["receipt"], state["completion"]])))
+    return json.loads(
+        ssh(host, quote_cmd([state["python"], "-c", script, state["receipt"], state["completion"]]))
+    )
 
 
 def prepare_launch(host, cfg, job, attempt, device):
-    root, code = cfg["result_root"], cfg["code_path"]
+    root, _code = cfg["result_root"], cfg["code_path"]
     out = f"{root}/runs/{job['job_id']}/{attempt}"
     index, gpu_uuid = device if device is not None else (None, None)
-    return {"state": "launching", "host": host, "python": cfg["venv_python"],
-            "out": out, "receipt": out + "/receipt.json", "completion": out + "/completion.json",
-            "device": index, "gpu_uuid": gpu_uuid, "attempt": attempt,
-            "nonce": uuid.uuid4().hex, "started": now()}
+    return {
+        "state": "launching",
+        "host": host,
+        "python": cfg["venv_python"],
+        "out": out,
+        "receipt": out + "/receipt.json",
+        "completion": out + "/completion.json",
+        "device": index,
+        "gpu_uuid": gpu_uuid,
+        "attempt": attempt,
+        "nonce": uuid.uuid4().hex,
+        "started": now(),
+    }
 
 
 def launch(host, cfg, job, record):
     root, code, out = cfg["result_root"], cfg["code_path"], record["out"]
-    values = {"root": root, "code": code, "data": cfg["data_path"],
-              "source": job.get("source", ""), "job_id": job["job_id"],
-              "attempt": record["attempt"], "weights": cfg.get("weights_path", code + "/weights")}
+    values = {
+        "root": root,
+        "code": code,
+        "data": cfg["data_path"],
+        "source": job.get("source", ""),
+        "job_id": job["job_id"],
+        "attempt": record["attempt"],
+        "weights": cfg.get("weights_path", code + "/weights"),
+    }
     resolved = resolve(job, values)
-    resolved.update(out_dir=out, device="cuda:0" if record["gpu_uuid"] else "cpu",
-                    gpu_uuid=record["gpu_uuid"], attempt_nonce=record["nonce"],
-                    weights_dir=cfg.get("weights_path", root + "/weights"),
-                    code_commit=cfg.get("code_commit"), protocol_sha256=cfg.get("protocol_sha256"))
+    resolved.update(
+        out_dir=out,
+        device="cuda:0" if record["gpu_uuid"] else "cpu",
+        gpu_uuid=record["gpu_uuid"],
+        attempt_nonce=record["nonce"],
+        weights_dir=cfg.get("weights_path", root + "/weights"),
+        code_commit=cfg.get("code_commit"),
+        protocol_sha256=cfg.get("protocol_sha256"),
+    )
     job_file, completion = out + "/job.json", record["completion"]
-    run = [cfg["venv_python"], "-m", "src.revision.fleet", "worker", job_file, completion, str(record["attempt"])]
+    run = [
+        cfg["venv_python"],
+        "-m",
+        "src.revision.fleet",
+        "worker",
+        job_file,
+        completion,
+        str(record["attempt"]),
+    ]
     if cfg.get("wrapper"):
         run.insert(0, cfg["wrapper"])
     script = """import json,os,subprocess,sys
@@ -225,13 +303,31 @@ env['CUDA_VISIBLE_DEVICES']=gpu if gpu else ''
 p=subprocess.Popen(args,cwd=out,env=env,stdin=subprocess.DEVNULL,stdout=f,stderr=subprocess.STDOUT,start_new_session=True)
 print(p.pid)
 """
-    ssh(host, quote_cmd([cfg["venv_python"], "-c", script, out, code,
-                         json.dumps(resolved), json.dumps(run), record["gpu_uuid"] or "", str(cfg.get("threads", 4)), cfg.get("torch_home", root + "/torch-cache")]))
+    ssh(
+        host,
+        quote_cmd(
+            [
+                cfg["venv_python"],
+                "-c",
+                script,
+                out,
+                code,
+                json.dumps(resolved),
+                json.dumps(run),
+                record["gpu_uuid"] or "",
+                str(cfg.get("threads", 4)),
+                cfg.get("torch_home", root + "/torch-cache"),
+            ]
+        ),
+    )
 
 
 def matches(record, obj, job_id):
-    return (obj.get("job_id") == job_id and obj.get("attempt") == record["attempt"]
-            and obj.get("nonce") == record["nonce"])
+    return (
+        obj.get("job_id") == job_id
+        and obj.get("attempt") == record["attempt"]
+        and obj.get("nonce") == record["nonce"]
+    )
 
 
 def schedule(args):
@@ -247,7 +343,13 @@ def schedule(args):
     if isinstance(jobs, dict):
         jobs = jobs["jobs"]
     ids = [j["job_id"] for j in jobs]
-    if len(ids) != len(set(ids)) or any(not x or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-" for c in x) for x in ids):
+    if len(ids) != len(set(ids)) or any(
+        not x
+        or any(
+            c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-" for c in x
+        )
+        for x in ids
+    ):
         raise ValueError("job IDs must be unique and contain only letters, digits, _, - or .")
     while True:
         hosts = json.loads(args.hosts.read_text())["hosts"]
@@ -266,37 +368,68 @@ def schedule(args):
                         record.update(state="uncertain", error="receipt identity mismatch")
                     elif "completion" in status:
                         completion = status["completion"]
-                        if not matches(record, completion, job["job_id"]) or any(completion.get(k) != receipt.get(k) for k in ("pid", "start_ticks", "boot_id")):
+                        if not matches(record, completion, job["job_id"]) or any(
+                            completion.get(k) != receipt.get(k)
+                            for k in ("pid", "start_ticks", "boot_id")
+                        ):
                             record.update(state="uncertain", error="completion identity mismatch")
-                        elif completion.get("state") == "succeeded" and completion.get("exit_code") == 0:
+                        elif (
+                            completion.get("state") == "succeeded"
+                            and completion.get("exit_code") == 0
+                        ):
                             record.update(state="succeeded", result=completion)
-                        elif completion.get("state") == "failed" and completion.get("exit_code") != 0:
+                        elif (
+                            completion.get("state") == "failed" and completion.get("exit_code") != 0
+                        ):
                             record.update(state="failed", result=completion)
                         else:
                             record.update(state="uncertain", error="invalid completion state")
                     elif receipt and status.get("alive") is False:
-                        record.update(state="infra_failed", error="verified worker exited without completion")
+                        record.update(
+                            state="infra_failed", error="verified worker exited without completion"
+                        )
                     elif receipt and status.get("alive") is True:
                         record.update(state="running", receipt_data=receipt)
                     else:
-                        record.update(state="uncertain", error=status.get("unknown", "receipt pending"))
+                        record.update(
+                            state="uncertain", error=status.get("unknown", "receipt pending")
+                        )
                     atomic_json(path, record)
-                except (subprocess.SubprocessError, OSError, ValueError, json.JSONDecodeError) as exc:
+                except (
+                    subprocess.SubprocessError,
+                    OSError,
+                    ValueError,
+                    json.JSONDecodeError,
+                ) as exc:
                     print(f"{now()} {job['job_id']}: host/status unavailable: {exc}", flush=True)
             records[job["job_id"]] = record
         if args.approval.is_file():
             gate = json.loads(args.approval.read_text())
             diagnostics = [j["job_id"] for j in jobs if j.get("stage") == "diagnostic"]
-            approved = (gate.get("approved") is True and diagnostics
-                        and gate.get("jobs_sha256") == hashlib.sha256(args.manifest.read_bytes()).hexdigest()
-                        and set(gate.get("diagnostic_job_ids", [])) == set(diagnostics)
-                        and all(records.get(j, {}).get("state") == "succeeded" for j in diagnostics))
+            approved = (
+                gate.get("approved") is True
+                and diagnostics
+                and gate.get("jobs_sha256")
+                == hashlib.sha256(args.manifest.read_bytes()).hexdigest()
+                and set(gate.get("diagnostic_job_ids", [])) == set(diagnostics)
+                and all(records.get(j, {}).get("state") == "succeeded" for j in diagnostics)
+            )
         else:
             gate = {}
         if not args.status:
-            used = {(r.get("host"), r.get("device")) for r in records.values() if r["state"] in {"running", "uncertain", "launching"}}
+            used = {
+                (r.get("host"), r.get("device"))
+                for r in records.values()
+                if r["state"] in {"running", "uncertain", "launching"}
+            }
             for host, cfg in hosts.items():
-                if not cfg.get("data_verified") or not cfg.get("code_path") or not cfg.get("protocol_sha256") or not cfg.get("code_commit") or not cfg.get("enabled", True):
+                if (
+                    not cfg.get("data_verified")
+                    or not cfg.get("code_path")
+                    or not cfg.get("protocol_sha256")
+                    or not cfg.get("code_commit")
+                    or not cfg.get("enabled", True)
+                ):
                     continue
                 try:
                     free = gpu_free(host, cfg)
@@ -304,12 +437,43 @@ def schedule(args):
                     print(f"{now()} {host}: GPU check failed: {exc}", flush=True)
                     free = []
                 slots = [(host, i) for i in free if (host, i[0]) not in used]
-                slots += [(host, None)] * max(0, int(cfg.get("cpu_workers", 0)) - sum(1 for r in records.values() if r.get("host") == host and r.get("device") is None and r["state"] in {"running", "uncertain", "launching"}))
+                slots += [(host, None)] * max(
+                    0,
+                    int(cfg.get("cpu_workers", 0))
+                    - sum(
+                        1
+                        for r in records.values()
+                        if r.get("host") == host
+                        and r.get("device") is None
+                        and r["state"] in {"running", "uncertain", "launching"}
+                    ),
+                )
                 for _, device in slots:
-                    candidates = [j for j in jobs if (j["method"] in GPU_METHODS) == (device is not None)
-                                  and (j.get("stage") == "diagnostic" or (approved and gate.get("split_sha256") == cfg.get("protocol_sha256") and gate.get("release_sha") == cfg.get("code_commit")))
-                                  and (device is None or j["method"] in cfg.get("gpu_methods", {}).get(str(device[0]), list(GPU_METHODS)))
-                                  and (j["job_id"] not in records or (records[j["job_id"]]["state"] == "infra_failed" and records[j["job_id"]]["attempt"] < 3))]
+                    candidates = [
+                        j
+                        for j in jobs
+                        if (j["method"] in GPU_METHODS) == (device is not None)
+                        and (
+                            j.get("stage") == "diagnostic"
+                            or (
+                                approved
+                                and gate.get("split_sha256") == cfg.get("protocol_sha256")
+                                and gate.get("release_sha") == cfg.get("code_commit")
+                            )
+                        )
+                        and (
+                            device is None
+                            or j["method"]
+                            in cfg.get("gpu_methods", {}).get(str(device[0]), list(GPU_METHODS))
+                        )
+                        and (
+                            j["job_id"] not in records
+                            or (
+                                records[j["job_id"]]["state"] == "infra_failed"
+                                and records[j["job_id"]]["attempt"] < 3
+                            )
+                        )
+                    ]
                     if not candidates:
                         continue
                     job = candidates[0]
@@ -331,12 +495,18 @@ def schedule(args):
                     atomic_json(path, record)
                     records[job["job_id"]] = record
                     used.add((host, record["device"]))
-                    print(f"{now()} {job['job_id']}: {record['state']} on {host} device={device} attempt={attempt}", flush=True)
+                    print(
+                        f"{now()} {job['job_id']}: {record['state']} on {host} device={device} attempt={attempt}",
+                        flush=True,
+                    )
         counts = {}
         for job in jobs:
             state = records.get(job["job_id"], {}).get("state", "pending")
             counts[state] = counts.get(state, 0) + 1
-        print(f"{now()} {json.dumps(counts, sort_keys=True)} gate={'open' if approved else 'closed'}", flush=True)
+        print(
+            f"{now()} {json.dumps(counts, sort_keys=True)} gate={'open' if approved else 'closed'}",
+            flush=True,
+        )
         if args.once or args.status:
             break
         time.sleep(args.poll)
@@ -370,7 +540,9 @@ def main():
                 continue
             dest = args.dest / path.stem / str(record["attempt"])
             dest.mkdir(parents=True, exist_ok=True)
-            subprocess.run(["rsync", "-a", f"{record['host']}:{record['out']}/", str(dest) + "/"], check=True)
+            subprocess.run(
+                ["rsync", "-a", f"{record['host']}:{record['out']}/", str(dest) + "/"], check=True
+            )
         return
     schedule(args)
 
