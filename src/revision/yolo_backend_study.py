@@ -135,6 +135,7 @@ def run_study(run: Path, out: Path, gpu_uuid: str, code_commit: str) -> dict:
     ):
         raise ValueError("selected checkpoint checksum mismatch")
     import torch
+    import torch.version
     import ultralytics
     from ultralytics import YOLO
 
