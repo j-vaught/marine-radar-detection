@@ -90,6 +90,14 @@ def _box_sum(x: torch.Tensor, k: int) -> torch.Tensor:
     """Reflect-padded box SUM with odd kernel size k.  x: [B, C, H, W]."""
     p = k // 2
     xp = F.pad(x, (p, p, p, p), mode="reflect")
+    if not x.is_cuda and xp.shape[-2] * xp.shape[-1] <= 2**24:
+        # Inputs are binary histogram planes.  The prefix sums therefore
+        # remain exact in float32 at these image sizes.  Reproduce avg_pool's
+        # divide-then-multiply rounding before the ring subtraction.
+        integral = F.pad(xp, (1, 0, 1, 0)).cumsum(-1).cumsum(-2)
+        counts = (integral[:, :, k:, k:] - integral[:, :, :-k, k:]
+                  - integral[:, :, k:, :-k] + integral[:, :, :-k, :-k])
+        return counts / (k * k) * (k * k)
     return F.avg_pool2d(xp, kernel_size=k, stride=1) * (k * k)
 
 
