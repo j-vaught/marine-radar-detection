@@ -1,7 +1,7 @@
 """Source-only training and fixed-holdout evaluation for revision jobs.
 
-The segmentation detector uses one fixed pixel threshold to form components and
-selects a component-score threshold using source validation only.
+The segmentation detector selects pixel and component-score thresholds using
+source validation only, then freezes both for target evaluation.
 """
 
 from __future__ import annotations
@@ -129,50 +129,70 @@ def _loss(model, batch, device, method, criterion):
     return sum(model(images, targets).values())
 
 
-def _predictions(model, coco, image_dir, method, size, device, post):
+def _unet_predictions_grid(model, coco, image_dir, size, device, post, thresholds):
+    """Infer each image once and extract components at each candidate threshold."""
     from ..unet.model import predict_prob_map
     from ..unet.utils import binary_mask_to_bboxes_with_scores
 
-    dataset = RadarDataset(coco, image_dir, method, size)
-    result = []
+    results = {threshold: [] for threshold in thresholds}
     model.eval()
-    for index, info in enumerate(coco["images"]):
-        if method == "unet":
-            path = image_dir / info["file_name"]
-            image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
-            if image is None:
-                raise FileNotFoundError(path)
-            h, w = image.shape
-            yy, xx = np.ogrid[:h, :w]
-            roi = (xx - 531) ** 2 + (yy - 515) ** 2 <= 466**2
-            prob = predict_prob_map(
-                model, np.where(roi, image, 0).astype(np.uint8), device=str(device), input_size=size
-            )
-            prob[~roi] = 0
+    for info in coco["images"]:
+        path = image_dir / info["file_name"]
+        image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+        if image is None:
+            raise FileNotFoundError(path)
+        h, w = image.shape
+        if (h, w) != (int(info["height"]), int(info["width"])):
+            raise ValueError(f"Image dimensions do not match annotations: {path}")
+        yy, xx = np.ogrid[:h, :w]
+        roi = (xx - 531) ** 2 + (yy - 515) ** 2 <= 466**2
+        prob = predict_prob_map(
+            model, np.where(roi, image, 0).astype(np.uint8), device=str(device), input_size=size
+        )
+        prob[~roi] = 0
+        for threshold in thresholds:
             boxes, scores = binary_mask_to_bboxes_with_scores(
-                (prob >= float(post["threshold"])).astype(np.uint8),
+                (prob >= threshold).astype(np.uint8),
                 prob,
                 min_area=int(post["min_area"]),
                 max_area=int(post["max_area"]),
                 dilation=int(post["dilation"]),
                 box_padding=int(post["box_padding"]),
             )
-        else:
-            image, _ = dataset[index]
-            with torch.no_grad():
-                output = model([image.to(device)])[0]
-            boxes, scores = output["boxes"].cpu().numpy(), output["scores"].cpu().numpy()
-        for box, score in zip(boxes, scores, strict=True):
-            x1, y1, x2, y2 = map(float, box)
-            if x2 > x1 and y2 > y1:
-                result.append(
-                    {
-                        "image_id": int(info["id"]),
-                        "category_id": 1,
-                        "bbox": [x1, y1, x2 - x1, y2 - y1],
-                        "score": float(score),
-                    }
-                )
+            _append_predictions(results[threshold], info, boxes, scores)
+    return results
+
+
+def _append_predictions(result, info, boxes, scores):
+    for box, score in zip(boxes, scores, strict=True):
+        x1, y1, x2, y2 = map(float, box)
+        if x2 > x1 and y2 > y1:
+            result.append(
+                {
+                    "image_id": int(info["id"]),
+                    "category_id": 1,
+                    "bbox": [x1, y1, x2 - x1, y2 - y1],
+                    "score": float(score),
+                }
+            )
+
+
+def _predictions(model, coco, image_dir, method, size, device, post):
+    if method == "unet":
+        threshold = float(post["threshold"])
+        return _unet_predictions_grid(model, coco, image_dir, size, device, post, [threshold])[
+            threshold
+        ]
+    dataset = RadarDataset(coco, image_dir, method, size)
+    result = []
+    model.eval()
+    for index, info in enumerate(coco["images"]):
+        image, _ = dataset[index]
+        with torch.no_grad():
+            output = model([image.to(device)])[0]
+        _append_predictions(
+            result, info, output["boxes"].cpu().numpy(), output["scores"].cpu().numpy()
+        )
     return result
 
 
@@ -193,6 +213,15 @@ def run_job(job: dict) -> dict:
         raise ValueError("Diagnostic jobs cannot evaluate target holdouts")
     protocol.set_seed(int(job["seed"]))
     prepared = protocol.prepare_job(job)
+    if job.get("overfit"):
+        if job.get("stage") != "diagnostic":
+            raise ValueError("Overfit mode is restricted to diagnostics")
+        train_ids = {int(x["id"]) for x in prepared["train"]["images"]}
+        val_ids = {int(x["id"]) for x in prepared["validation"]["images"]}
+        if train_ids != val_ids or not train_ids or len(train_ids) != 32:
+            raise ValueError(
+                "Overfit diagnostics require the same source training and validation images, exactly 32"
+            )
     output = Path(job["out_dir"])
     output.mkdir(parents=True, exist_ok=True)
     cfg_path = Path(__file__).parents[1] / method / "config.yaml"
@@ -204,6 +233,8 @@ def run_job(job: dict) -> dict:
     size = tuple(train_cfg.get("input_size", (640, 640)))
     device = resolve_device(job["device"])
     if device.type == "cuda":
+        torch.cuda.set_device(device)
+        torch.cuda.init()
         torch.cuda.reset_peak_memory_stats(device)
     model = (
         UNet(
@@ -344,31 +375,83 @@ def run_job(job: dict) -> dict:
     if not best_epoch or not (output / "best.pt").exists():
         raise RuntimeError("No best checkpoint available")
     model.load_state_dict(torch.load(output / "best.pt", map_location=device, weights_only=True))
+    for name in ("train", "validation"):
+        protocol.save_json(output / f"{name}_gt.json", prepared[name])
     post = cfg["postprocessing"]
     val_gt = prepared["validation"]
-    val_raw = _predictions(model, val_gt, prepared["image_dir"], method, size, device, post)
-    protocol.save_json(output / "val_raw_predictions.json", val_raw)
-    grid = [float(x) for x in post.get("score_threshold_grid", [0.0, 0.05, 0.1, 0.2, 0.3, 0.5])]
+    pixel_grid = (
+        [float(x) for x in post.get("pixel_threshold_grid", [0.2, 0.3, 0.4, 0.5, 0.6])]
+        if method == "unet"
+        else [None]
+    )
+    score_grid = [
+        float(x) for x in post.get("score_threshold_grid", [0.0, 0.05, 0.1, 0.2, 0.3, 0.5])
+    ]
+    if not pixel_grid or not score_grid:
+        raise ValueError("Threshold grids must not be empty")
+    if method == "unet" and any(x is None or not 0 < x < 1 for x in pixel_grid):
+        raise ValueError("Pixel thresholds must be strictly between zero and one")
+    if method == "unet":
+        candidates = _unet_predictions_grid(
+            model, val_gt, prepared["image_dir"], size, device, post, pixel_grid
+        )
+    else:
+        candidates = {
+            None: _predictions(model, val_gt, prepared["image_dir"], method, size, device, post)
+        }
     choices = []
-    for threshold in grid:
-        preds = [p for p in val_raw if p["score"] >= threshold]
-        metrics = evaluation.evaluate_coco(val_gt, preds)
-        choices.append((metrics["ap50"], metrics["ap"], -threshold, threshold, metrics))
-    if not choices:
-        raise ValueError("Score threshold grid must not be empty")
-    _, _, _, threshold, val_metrics = max(choices, key=lambda x: x[:3])
+    sweep = []
+    for pixel in pixel_grid:
+        for threshold in score_grid:
+            filtered = [p for p in candidates[pixel] if p["score"] >= threshold]
+            metrics = evaluation.evaluate_coco(val_gt, filtered)
+            sweep.append(
+                {"pixel_threshold": pixel, "score_threshold": threshold, "metrics": metrics}
+            )
+            choices.append(
+                (
+                    metrics["ap50"],
+                    metrics["ap"],
+                    -threshold,
+                    -(pixel or 0),
+                    pixel,
+                    threshold,
+                    metrics,
+                )
+            )
+    _, _, _, _, pixel, threshold, val_metrics = max(choices, key=lambda x: x[:4])
+    if method == "unet":
+        post["threshold"] = pixel
+    val_raw = candidates[pixel]
+    protocol.save_json(output / "val_raw_predictions.json", val_raw)
     protocol.save_json(
         output / "val_predictions.json", [p for p in val_raw if p["score"] >= threshold]
+    )
+    protocol.save_json(
+        output / "postprocessing_selection.json",
+        {
+            "pixel_threshold": pixel,
+            "score_threshold": threshold,
+            "selection_split": "source_validation",
+            "sweep": sweep,
+        },
     )
     targets = {}
     eval_started = time.perf_counter()
     for site in job.get("eval_targets", []):
         gt = prepared["tests"][site]
+        gt_path = output / f"{site}_gt.json"
+        protocol.save_json(gt_path, gt)
         raw = _predictions(model, gt, prepared["image_dir"], method, size, device, post)
         filtered = [p for p in raw if p["score"] >= threshold]
         protocol.save_json(output / f"{site}_raw_predictions.json", raw)
         protocol.save_json(output / f"{site}_predictions.json", filtered)
         targets[site] = {
+            "checkpoint_sha256": protocol.sha256_file(output / "best.pt"),
+            "gt_path": str(gt_path),
+            "gt_sha256": protocol.sha256_file(gt_path),
+            "raw_predictions_path": str(output / f"{site}_raw_predictions.json"),
+            "filtered_predictions_path": str(output / f"{site}_predictions.json"),
             "raw": evaluation.evaluate_coco(gt, raw),
             "filtered": evaluation.evaluate_coco(gt, filtered),
             "raw_count": len(raw),
@@ -376,12 +459,19 @@ def run_job(job: dict) -> dict:
         }
     result = {
         "job_id": job["job_id"],
+        "stage": job["stage"],
+        "condition": job["condition"],
+        "manifest_sha256": protocol.sha256_file(Path(job["manifest"])),
+        "annotation_sha256": protocol.sha256_file(Path(job["ann"])),
+        "train_gt_sha256": protocol.sha256_file(output / "train_gt.json"),
+        "validation_gt_sha256": protocol.sha256_file(output / "validation_gt.json"),
         "method": method,
         "source": job["source"],
         "seed": job["seed"],
         "best_epoch": best_epoch,
         "best_val_loss": best_loss,
         "threshold": threshold,
+        "pixel_threshold": pixel,
         "validation": val_metrics,
         "val_raw_count": len(val_raw),
         "tests": targets,

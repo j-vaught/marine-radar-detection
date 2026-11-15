@@ -52,3 +52,33 @@ def test_nested_overrides_preserve_unspecified_values():
     assert _merge({"training": {"epochs": 2, "workers": 0}}, {"training": {"epochs": 3}}) == {
         "training": {"epochs": 3, "workers": 0}
     }
+
+
+def test_unet_pixel_threshold_grid_uses_one_inference_per_image(tmp_path: Path, monkeypatch):
+    from src.revision.torch_models import _unet_predictions_grid
+    from src.unet import model as unet_model
+
+    cv2.imwrite(str(tmp_path / "tile.png"), np.full((1030, 1062), 255, np.uint8))
+    calls = []
+
+    def predict(*args, **kwargs):
+        calls.append(1)
+        prob = np.zeros((1030, 1062), dtype=np.float32)
+        prob[500:520, 500:520] = 0.45
+        return prob
+
+    monkeypatch.setattr(unet_model, "predict_prob_map", predict)
+    post = {"min_area": 1, "max_area": 1000, "dilation": 0, "box_padding": 0}
+    predictions = _unet_predictions_grid(
+        types.SimpleNamespace(eval=lambda: None),
+        coco(),
+        tmp_path,
+        (640, 640),
+        "cpu",
+        post,
+        [0.3, 0.5],
+    )
+    assert len(calls) == 1
+    assert len(predictions[0.3]) == 1
+    assert predictions[0.5] == []
+    assert predictions[0.3][0]["bbox"] == [500.0, 500.0, 20.0, 20.0]
