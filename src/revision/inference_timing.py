@@ -354,6 +354,7 @@ def gpu_snapshot(uuid: str, expected_pids: set[int]) -> dict:
 def run(args: argparse.Namespace) -> None:
     import cv2
     import torch
+    from torch.backends import cuda, cudnn
     from torch.version import cuda as torch_cuda
 
     from .fleet import cuda_uuid
@@ -371,13 +372,34 @@ def run(args: argparse.Namespace) -> None:
     if torch.cuda.device_count() != 1 or cuda_uuid() != args.gpu_uuid:
         raise RuntimeError("Logical CUDA device zero did not match the assigned UUID")
     device = torch.device("cuda:0")
-    torch.set_num_threads(args.threads)
     torch.set_num_interop_threads(1)
-    cv2.setNumThreads(args.threads)
     args.output.parent.mkdir(parents=True, exist_ok=True)
+
+    def configure_threads():
+        torch.set_num_threads(args.threads)
+        cv2.setNumThreads(args.threads)
+
+    def execution_settings():
+        settings = {
+            "torch_threads": torch.get_num_threads(),
+            "torch_interop_threads": torch.get_num_interop_threads(),
+            "opencv_threads": cv2.getNumThreads(),
+            "cudnn_version": cudnn.version(),
+            "cudnn_enabled": cudnn.enabled,
+            "cudnn_benchmark": cudnn.benchmark,
+            "cudnn_deterministic": cudnn.deterministic,
+            "cudnn_allow_tf32": cudnn.allow_tf32,
+            "cuda_matmul_allow_tf32": cuda.matmul.allow_tf32,
+            "float32_matmul_precision": torch.get_float32_matmul_precision(),
+        }
+        if settings["torch_threads"] != args.threads or settings["opencv_threads"] != args.threads:
+            raise RuntimeError(f"Native runtime thread settings changed: {settings}")
+        return settings
 
     def synchronize():
         torch.cuda.synchronize(device)
+
+    configure_threads()
 
     with tempfile.TemporaryDirectory(prefix="timing-png-", dir=args.output.parent) as folder:
         started = time.perf_counter()
@@ -392,12 +414,18 @@ def run(args: argparse.Namespace) -> None:
             predict, preprocess = make_predictor(method, model_run, directory, coco, device)
             synchronize()
             load_seconds = time.perf_counter() - started
+            configure_threads()
             torch.cuda.reset_peak_memory_stats(device)
             warmup = measure_pass(predict, synchronize, image_ids)
             warmup_peak = torch.cuda.max_memory_allocated(device)
+            # The framework may change OpenCV settings during import or lazy predictor setup.
+            configure_threads()
+            runtime = execution_settings()
             torch.cuda.reset_peak_memory_stats(device)
             passes = [measure_pass(predict, synchronize, image_ids) for _ in range(TIMED_PASSES)]
             timed_peak = torch.cuda.max_memory_allocated(device)
+            if execution_settings() != runtime:
+                raise RuntimeError(f"Native runtime settings changed during timed passes: {method}")
             after = gpu_snapshot(args.gpu_uuid, {os.getpid()})
             timing[method] = {
                 **model_run.provenance,
@@ -405,6 +433,7 @@ def run(args: argparse.Namespace) -> None:
                 "before_gpu": before,
                 "after_gpu": after,
                 "model_load_seconds": load_seconds,
+                "runtime_settings": runtime,
                 "warmup_pass": warmup,
                 "timed_passes": passes,
                 "warmup_peak_torch_allocated_bytes": warmup_peak,
@@ -433,6 +462,10 @@ def run(args: argparse.Namespace) -> None:
                 "torch_cuda": torch_cuda,
                 "cpu_affinity": sorted(os.sched_getaffinity(0)),
                 "cpu_threads": args.threads,
+                "thread_environment": {
+                    key: os.environ.get(key)
+                    for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "RAYON_NUM_THREADS")
+                },
                 "environment": {
                     package: version(package)
                     for package in ("torch", "torchvision", "ultralytics", "opencv-python", "numpy")

@@ -6,11 +6,11 @@ Run on one idle RTX 6000 Ada GPU using the installed revision environment. Set `
 
 ```sh
 CUDA_VISIBLE_DEVICES="$timing_gpu_uuid" TORCH_HOME="$timing_torch_cache" \
-  OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 \
+  OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 RAYON_NUM_THREADS=4 \
   "$timing_nvidia_wrapper" "$timing_python" -m src.revision.inference_timing \
-  --gpu-uuid "$timing_gpu_uuid" --threads 2 --runs "$timing_root/inputs/runs" \
+  --gpu-uuid "$timing_gpu_uuid" --threads 4 --runs "$timing_root/inputs/runs" \
   --manifest "$timing_manifest" --ann "$timing_data/annotations/all.json" \
   --images "$timing_data/images" --output "$timing_root/timings.json"
 ```
 
-The program records staged PNG digests and elapsed staging time. Each model loads once, runs one complete warmup pass, and runs three timed passes. The iterator visits the same PNGs in lexicographic filename order. Timed passes cover PNG decoding, native resizing, device copies, forward inference, native postprocessing, and creation of the in-memory raw detection list at batch size one. CUDA is synchronized immediately outside each pass. The report records checkpoint load time and the warmup separately. It also records finite-box and count checks, parameter dtypes, warmup and timed peak PyTorch allocations, driver and package versions, and observed GPU occupancy before and after each model. The raw floors are 0.0 for Faster R-CNN and 0.001 for YOLO26 and RT-DETR. U-Net uses the frozen source validation pixel threshold with connected-component box extraction, and retains all component scores. No target partition or accuracy metric enters the study.
+The program records staged PNG digests and elapsed staging time. Each model loads once, runs one complete warmup pass, and runs three timed passes. The iterator visits the same PNGs in lexicographic filename order. Timed passes cover PNG decoding, native resizing, device copies, forward inference, native postprocessing, and creation of the in-memory raw detection list at batch size one. CUDA is synchronized immediately outside each pass. The runner restores the requested PyTorch and OpenCV thread counts after model loading and warmup, and checks the effective thread counts and math settings around each model's timed passes. The report records checkpoint load time and the warmup separately. It also records finite-box and count checks, parameter dtypes, warmup and timed peak PyTorch allocations, driver and package versions, and observed GPU occupancy before and after each model. The raw floors are 0.0 for Faster R-CNN and 0.001 for YOLO26 and RT-DETR. U-Net uses the frozen source validation pixel threshold with connected-component box extraction, and retains all component scores. No target partition or accuracy metric enters the study.
