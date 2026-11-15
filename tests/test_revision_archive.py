@@ -292,3 +292,12 @@ def test_direct_failure_falls_back_to_fresh_relay_stage(monkeypatch):
     )
     assert result == "archived" and metrics["transport"] == "relay"
     assert len(calls) == 2 and calls[0] != calls[1]
+
+
+def test_transport_config_accepts_verified_1141(tmp_path):
+    from src.revision.archive_transport import load_config
+
+    path = tmp_path / "transport.json"
+    data = {"destination_bind": "10.1.1.1", "sources": {"cocesr-1141": "10.1.1.2"}}
+    path.write_text(json.dumps(data))
+    assert load_config(path) == data

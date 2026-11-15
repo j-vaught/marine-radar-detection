@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .fleet import quote_cmd, ssh_options
 
-ALLOWED_SOURCES = {"comech-2422", "comech-1176", "cocesr-1034"}
+ALLOWED_SOURCES = {"comech-2422", "comech-1176", "cocesr-1034", "cocesr-1141"}
 
 # The receiver creates an ephemeral certificate locally. The token is supplied via
 # authenticated SSH stdin, and never appears in command arguments or logs.
